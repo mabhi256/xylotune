@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tune to Xylophone</title>
+  <style>
+    :root {
+      --bg: #212326;
+      --panel: #2a2d31;
+      --border: #3a3d42;
+      --text: #e8eaed;
+      --muted: #9aa0a6;
+      --c1: #d63c30;
+      /* C  red */
+      --c2: #ee9421;
+      /* D  orange */
+      --c3: #e6bd1c;
+      /* E  gold */
+      --c4: #4ba54f;
+      /* F  green */
+      --c5: #12897e;
+      /* G  teal */
+      --c6: #189ad3;
+      /* A  blue */
+      --c7: #6a3fae;
+      /* B  purple */
+      --c8: #d84941;
+      /* C' red */
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--text);
+      padding: 18px 16px 24px;
+    }
+
+    .wrap {
+      max-width: 860px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      font-size: 18px;
+      font-weight: 700;
+      margin: 0;
+      letter-spacing: .2px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    button {
+      font: 600 13px inherit;
+      font-family: inherit;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 7px 13px;
+      cursor: pointer;
+      color: var(--text);
+      background: #35383d;
+      transition: background .1s ease;
+    }
+
+    button:hover {
+      background: #3f434a;
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    button:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+    }
+
+    button.primary {
+      background: var(--c5);
+      border-color: transparent;
+    }
+
+    button.primary:hover {
+      background: #0f9c8f;
+    }
+
+    button.danger {
+      background: #a83a32;
+      border-color: transparent;
+    }
+
+    select {
+      font: 600 13px inherit;
+      font-family: inherit;
+      padding: 7px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #35383d;
+      color: var(--text);
+    }
+
+    /* Two columns: xylophone left, pad right */
+    .main {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+
+    @media (max-width:700px) {
+      .main {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Music pad */
+    .pad-panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    .tempo {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+    }
+
+    .tempo input[type=range] {
+      width: 90px;
+      accent-color: var(--c5);
+    }
+
+    #bpmLabel {
+      font-weight: 600;
+      min-width: 50px;
+    }
+
+    .pad {
+      min-height: 280px;
+      max-height: 340px;
+      overflow-y: auto;
+      padding: 2px 4px;
+    }
+
+    .pline {
+      padding: 5px 0 6px;
+      border-bottom: 1px solid #33363b;
+    }
+
+    .pline:last-child {
+      border-bottom: none;
+    }
+
+    .pnotes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      align-items: center;
+      min-height: 26px;
+      cursor: text;
+    }
+
+    .chip {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12.5px;
+      font-weight: 700;
+      color: #fff;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, .35);
+      flex: 0 0 auto;
+      cursor: pointer;
+    }
+
+    .chip.playing {
+      outline: 2px solid #fff;
+      transform: scale(1.12);
+    }
+
+    .gap {
+      display: inline-flex;
+      align-items: center;
+      color: #6f7479;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      cursor: pointer;
+      padding: 2px 6px 2px 2px;
+      border-radius: 5px;
+    }
+
+    .gap:hover {
+      background: #35383d;
+      color: var(--muted);
+    }
+
+    .gaptip {
+      position: fixed;
+      transform: translate(-50%, calc(-100% - 8px));
+      background: #111214;
+      color: var(--text);
+      font: 600 11px inherit;
+      font-family: inherit;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      pointer-events: none;
+      white-space: nowrap;
+      z-index: 50;
+      display: none;
+    }
+
+    .lyric {
+      font-size: 11.5px;
+      color: #84898e;
+      font-style: italic;
+      margin-top: 3px;
+    }
+
+    .caret {
+      display: inline-block;
+      width: 2px;
+      height: 18px;
+      background: var(--text);
+      animation: blink 1.1s steps(1) infinite;
+    }
+
+    @keyframes blink {
+      50% {
+        opacity: 0;
+      }
+    }
+
+    .placeholder {
+      color: #6f7479;
+      font-size: 12.5px;
+      font-style: italic;
+    }
+
+    .keys-hint {
+      margin-top: 8px;
+      font-size: 11.5px;
+      color: #6f7479;
+      line-height: 1.6;
+    }
+
+    kbd {
+      font: 600 10.5px inherit;
+      font-family: inherit;
+      background: #35383d;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 5px;
+      color: var(--muted);
+    }
+
+    /* Xylophone */
+    .xylo-panel {
+      order: -1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 320px;
+    }
+
+    .xylo {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: clamp(5px, 1vw, 9px);
+    }
+
+    .key {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .bar {
+      width: clamp(30px, 4.2vw, 40px);
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: Georgia, "Times New Roman", serif;
+      font-weight: 700;
+      font-size: 20px;
+      color: #17181a;
+      box-shadow: 0 3px 8px rgba(0, 0, 0, .4);
+      transition: filter .07s ease, transform .07s ease;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+
+    .bar:hover {
+      filter: brightness(1.1);
+    }
+
+    .bar.active {
+      filter: brightness(1.35);
+      transform: scale(.97);
+    }
+
+    .bar:focus-visible {
+      outline: 2px solid #fff;
+      outline-offset: 3px;
+    }
+
+    .num {
+      font-size: 14px;
+      color: #cfd2d6;
+      font-weight: 600;
+    }
+
+    .status {
+      margin-top: 12px;
+      font-size: 13px;
+      color: var(--muted);
+      min-height: 18px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        transition: none !important;
+        animation: none !important;
+      }
+
+      .bar.active {
+        transform: none;
+      }
+
+      .chip.playing {
+        transform: none;
+      }
+
+      .caret {
+        opacity: 1;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Tune to Xylophone</h1>
+      <div class="controls">
+        <button id="micBtn">🎤 Hum it</button>
+        <button id="fileBtn">📁 Upload</button>
+        <input id="fileInput" type="file" accept="audio/*" style="display:none">
+        <select id="exampleSelect">
+          <option value="">Pick a tune…</option>
+        </select>
+      </div>
+    </header>
+
+    <div class="main">
+      <section class="pad-panel">
+        <div class="toolbar">
+          <button id="playBtn" class="primary" disabled>▶ Play</button>
+          <button id="restartBtn" disabled title="Restart from the beginning" aria-label="Restart">⏮</button>
+          <button id="clearBtn">✕ Clear</button>
+          <div class="tempo">
+            <span id="bpmLabel">Speed 100%</span>
+            <input type="range" id="bpmSlider" min="50" max="200" value="100" step="10">
+          </div>
+        </div>
+        <div class="pad" id="pad"></div>
+        <div class="keys-hint">
+          <kbd>1</kbd>–<kbd>8</kbd> write a note &nbsp;·&nbsp; <kbd>Enter</kbd> new line &nbsp;·&nbsp;
+          <kbd>⌫</kbd> delete &nbsp;·&nbsp; arrow keys or click to move the cursor
+          <br>The dots after each note are the gap before the next one (hover for the exact time). Click past
+          the dots to add one, click a dot to cut the gap back to that point.
+          <br>Play bars one after another at the end of the pad and your real timing is recorded automatically —
+          pause more than a beat and a new line starts on its own.
+        </div>
+      </section>
+
+      <section class="xylo-panel">
+        <div class="xylo" id="xylo"></div>
+      </section>
+    </div>
+
+  </div>
+
+  <script>
+    // ---------- 8-note diatonic set, C5 to C6 (bright toy-xylophone register) ----------
+    const NOTES = [
+      { name: 'C', freq: 523.25, color: 'var(--c1)' },
+      { name: 'D', freq: 587.33, color: 'var(--c2)' },
+      { name: 'E', freq: 659.26, color: 'var(--c3)' },
+      { name: 'F', freq: 698.46, color: 'var(--c4)' },
+      { name: 'G', freq: 783.99, color: 'var(--c5)' },
+      { name: 'A', freq: 880.00, color: 'var(--c6)' },
+      { name: 'B', freq: 987.77, color: 'var(--c7)' },
+      { name: 'C2', freq: 1046.5, color: 'var(--c8)', label: 'C' },
+    ];
+
+    // Bars: equal width, height steps down left to right, centered on one axis
+    const xyloEl = document.getElementById('xylo');
+    const barEls = [];
+    NOTES.forEach((n, i) => {
+      const key = document.createElement('div');
+      key.className = 'key';
+      const bar = document.createElement('div');
+      bar.className = 'bar';
+      bar.style.background = n.color;
+      bar.style.height = (230 - i * 12) + 'px';
+      bar.textContent = n.label || n.name;
+      bar.setAttribute('role', 'button');
+      bar.setAttribute('tabindex', '0');
+      bar.setAttribute('aria-label', `Bar ${i + 1}, note ${n.label || n.name}`);
+      // pointerdown, not click: the note sounds the moment the bar is pressed
+      bar.addEventListener('pointerdown', (e) => { e.preventDefault(); strike(i); });
+      bar.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); strike(i); }
+      });
+      const num = document.createElement('div');
+      num.className = 'num';
+      num.textContent = i + 1;
+      key.appendChild(bar);
+      key.appendChild(num);
+      xyloEl.appendChild(key);
+      barEls.push(bar);
+    });
+
+    // ---------- Sound: struck metal bar (glockenspiel-style modal synthesis) ----------
+    let audioCtx = null, bus = null;
+    function ctx() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const comp = audioCtx.createDynamicsCompressor();
+        comp.threshold.value = -18;
+        comp.ratio.value = 6;
+        comp.connect(audioCtx.destination);
+        bus = audioCtx.createGain();
+        bus.gain.value = 0.85;
+        bus.connect(comp);
+      }
+      return audioCtx;
+    }
+
+    let noiseBuffer = null;
+    function getNoiseBuffer(ac) {
+      if (noiseBuffer) return noiseBuffer;
+      const len = ac.sampleRate * 0.03;
+      noiseBuffer = ac.createBuffer(1, len, ac.sampleRate);
+      const data = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+      return noiseBuffer;
+    }
+
+    function playNote(i, when = 0, holdMs = 180) {
+      const ac = ctx();
+      const t0 = ac.currentTime + when;
+      const freq = NOTES[i].freq * (1 + (Math.random() - 0.5) * 0.002);
+      const out = ac.createGain();
+      out.gain.value = 1;
+      let dest = out;
+      if (ac.createStereoPanner) {
+        const pan = ac.createStereoPanner();
+        pan.pan.value = (i / 7 - 0.5) * 0.6;
+        out.connect(pan); pan.connect(bus);
+      } else {
+        out.connect(bus);
+      }
+
+      // Transverse modes of a free metal bar, fundamental dominant, ringing tail
+      const modes = [
+        { ratio: 1.000, gain: 0.55, decay: 1.5 },
+        { ratio: 1.004, gain: 0.28, decay: 1.3 }, // detuned pair gives the natural shimmer
+        { ratio: 2.756, gain: 0.20, decay: 0.60 },
+        { ratio: 5.404, gain: 0.11, decay: 0.30 },
+        { ratio: 8.933, gain: 0.05, decay: 0.16 },
+      ];
+      modes.forEach(m => {
+        const osc = ac.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = freq * m.ratio;
+        const g = ac.createGain();
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(m.gain, t0 + 0.0015);
+        g.gain.setTargetAtTime(0.0001, t0 + 0.0015, m.decay / 6);
+        osc.connect(g); g.connect(dest);
+        osc.start(t0);
+        osc.stop(t0 + m.decay + 0.3);
+      });
+
+      // Soft mallet contact: short band-limited noise tick
+      const noise = ac.createBufferSource();
+      noise.buffer = getNoiseBuffer(ac);
+      const bp = ac.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = freq * 2.5;
+      bp.Q.value = 1.0;
+      const ng = ac.createGain();
+      ng.gain.setValueAtTime(0.22, t0);
+      ng.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.012);
+      noise.connect(bp); bp.connect(ng); ng.connect(dest);
+      noise.start(t0);
+      noise.stop(t0 + 0.03);
+
+      setTimeout(() => {
+        barEls[i].classList.add('active');
+        setTimeout(() => barEls[i].classList.remove('active'), holdMs);
+      }, Math.max(0, when * 1000));
+    }
+
+    // ---------- The pad: lines of notes, edited like text ----------
+    // lines = [{notes:[{i,sec} | {rest:true,sec}], lyric:''}]
+    // sec = seconds to hold before the next event starts. Captured from real
+    // elapsed time when a note is played live; a fixed default otherwise.
+    // cursor sits before notes[pos] on lines[line], like a text caret
+    const QUARTER_SEC = 0.4;                // default gap for a freshly typed/inserted note
+    const REST_UNIT_SEC = QUARTER_SEC / 4;  // one "." rest step
+    const MIN_LIVE_GAP_SEC = 0.06;
+    const PHRASE_BREAK_SEC = 0.4;           // a pause longer than this starts a new line, not a held note
+    const MAX_PAUSE_SEC = 1.6;              // caps a genuinely huge pause (e.g. you stepped away) so it stays playable
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    let lines = [{ notes: [], lyric: '' }];
+    let cursor = { line: 0, pos: 0 };
+    let lastLiveNote = null; // {note, time}: tail of a run of live-played notes, for real-gap capture
+    const padEl = document.getElementById('pad');
+    const playBtn = document.getElementById('playBtn');
+    const bpmSlider = document.getElementById('bpmSlider');
+    const bpmLabel = document.getElementById('bpmLabel');
+
+    bpmSlider.addEventListener('input', () => { bpmLabel.textContent = 'Speed ' + bpmSlider.value + '%'; });
+
+    function hasNotes() { return lines.some(l => l.notes.some(n => !n.rest)); }
+
+    // Custom tooltip for the gap dots: shows instantly and tracks the pointer,
+    // unlike the browser's built-in title (fixed delay, one string per element).
+    const gapTip = document.createElement('div');
+    gapTip.className = 'gaptip';
+    document.body.appendChild(gapTip);
+    function showGapTip(x, y, text) {
+      gapTip.textContent = text;
+      gapTip.style.left = x + 'px';
+      gapTip.style.top = y + 'px';
+      gapTip.style.display = 'block';
+    }
+    function hideGapTip() { gapTip.style.display = 'none'; }
+
+    // The gap after a note/rest, shown as clickable dots (one dot = REST_UNIT_SEC).
+    // Click past the dots to grow the gap; click a dot to cut it back to that point.
+    // Hovering previews what a click there would set the gap to.
+    function gapDots(n, li, ni) {
+      const wrap = document.createElement('span');
+      wrap.className = 'gap';
+      if (n.rest) wrap.dataset.pos = li + '-' + ni;
+      const count = Math.max(1, Math.round(n.sec / REST_UNIT_SEC));
+      for (let d = 0; d < count; d++) {
+        const dot = document.createElement('span');
+        dot.textContent = '·';
+        dot.dataset.step = d + 1; // clicking here sets the gap to this many steps
+        dot.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          resetPlayer();
+          lastLiveNote = null;
+          n.sec = (d + 1) * REST_UNIT_SEC;
+          renderPad();
+        });
+        wrap.appendChild(dot);
+      }
+      wrap.addEventListener('pointermove', (e) => {
+        const dot = e.target.closest('[data-step]');
+        const steps = dot ? +dot.dataset.step : count + 1; // padding beyond the dots previews +1
+        const cur = count * REST_UNIT_SEC;
+        const delta = steps * REST_UNIT_SEC - cur;
+        const text = delta === 0
+          ? cur.toFixed(1) + 's'
+          : cur.toFixed(1) + (delta > 0 ? '+' : '-') + Math.abs(delta).toFixed(1) + 's';
+        showGapTip(e.clientX, wrap.getBoundingClientRect().top, text);
+      });
+      wrap.addEventListener('pointerleave', hideGapTip);
+      wrap.addEventListener('pointerdown', (e) => {
+        if (e.target !== wrap) return; // a specific dot already handled this click
+        e.stopPropagation();
+        resetPlayer();
+        lastLiveNote = null;
+        n.sec += REST_UNIT_SEC;
+        renderPad();
+      });
+      return wrap;
+    }
+
+    function renderPad() {
+      hideGapTip(); // the hovered element is about to be torn down and rebuilt
+      padEl.innerHTML = '';
+      const empty = lines.length === 1 && lines[0].notes.length === 0;
+      let caretEl = null;
+      lines.forEach((line, li) => {
+        const row = document.createElement('div');
+        row.className = 'pline';
+        const notesRow = document.createElement('div');
+        notesRow.className = 'pnotes';
+        const putCaret = () => {
+          caretEl = document.createElement('span');
+          caretEl.className = 'caret';
+          notesRow.appendChild(caretEl);
+        };
+        line.notes.forEach((n, ni) => {
+          if (li === cursor.line && ni === cursor.pos) putCaret();
+          if (!n.rest) {
+            const chip = document.createElement('div');
+            chip.className = 'chip';
+            chip.style.background = NOTES[n.i].color;
+            chip.textContent = n.i + 1;
+            chip.dataset.pos = li + '-' + ni;
+            chip.addEventListener('pointerdown', (e) => {
+              e.stopPropagation();
+              cursor = { line: li, pos: ni + 1 };
+              renderPad();
+            });
+            notesRow.appendChild(chip);
+          }
+          notesRow.appendChild(gapDots(n, li, ni));
+        });
+        if (li === cursor.line && cursor.pos >= line.notes.length) putCaret();
+        if (empty) {
+          const p = document.createElement('span');
+          p.className = 'placeholder';
+          p.textContent = 'Tap the bars to write your tune…';
+          notesRow.appendChild(p);
+        }
+        row.addEventListener('pointerdown', () => {
+          cursor = { line: li, pos: line.notes.length };
+          renderPad();
+        });
+        row.appendChild(notesRow);
+        if (line.lyric) {
+          const ly = document.createElement('div');
+          ly.className = 'lyric';
+          ly.textContent = line.lyric;
+          row.appendChild(ly);
+        }
+        padEl.appendChild(row);
+      });
+      updatePlayBtn();
+      if (caretEl) caretEl.scrollIntoView({ block: 'nearest' });
+    }
+
+    function strike(i) {
+      playNote(i);
+      resetPlayer();
+      const now = performance.now();
+      const atEnd = cursor.line === lines.length - 1 && cursor.pos === lines[cursor.line].notes.length;
+      const continuesLive = atEnd && lastLiveNote && lastLiveNote.note === lines[cursor.line].notes[cursor.pos - 1];
+      if (continuesLive) {
+        const gapSec = (now - lastLiveNote.time) / 1000;
+        lastLiveNote.note.sec = clamp(gapSec, MIN_LIVE_GAP_SEC, MAX_PAUSE_SEC);
+        if (gapSec > PHRASE_BREAK_SEC) {
+          // a pause this long also reads as the start of a new phrase, not just a held note
+          lines.push({ notes: [], lyric: '' });
+          cursor = { line: lines.length - 1, pos: 0 };
+        }
+      }
+      const note = { i, sec: QUARTER_SEC };
+      lines[cursor.line].notes.splice(cursor.pos, 0, note);
+      cursor.pos++;
+      lastLiveNote = atEnd ? { note, time: now } : null;
+      renderPad();
+    }
+    function newLine() {
+      // split the current line at the caret, like Enter in a text editor
+      resetPlayer();
+      lastLiveNote = null;
+      const tail = lines[cursor.line].notes.splice(cursor.pos);
+      lines.splice(cursor.line + 1, 0, { notes: tail, lyric: '' });
+      cursor = { line: cursor.line + 1, pos: 0 };
+      renderPad();
+    }
+    function backspace() {
+      resetPlayer();
+      lastLiveNote = null;
+      const line = lines[cursor.line];
+      if (cursor.pos > 0) {
+        line.notes.splice(cursor.pos - 1, 1);
+        cursor.pos--;
+      } else if (cursor.line > 0) {
+        const prev = lines[cursor.line - 1];
+        cursor = { line: cursor.line - 1, pos: prev.notes.length };
+        prev.notes = prev.notes.concat(line.notes);
+        lines.splice(cursor.line + 1, 1);
+      }
+      renderPad();
+    }
+    function forwardDelete() {
+      resetPlayer();
+      lastLiveNote = null;
+      const line = lines[cursor.line];
+      if (cursor.pos < line.notes.length) {
+        line.notes.splice(cursor.pos, 1);
+      } else if (cursor.line < lines.length - 1) {
+        line.notes = line.notes.concat(lines[cursor.line + 1].notes);
+        lines.splice(cursor.line + 1, 1);
+      }
+      renderPad();
+    }
+    function moveCursor(key) {
+      const len = () => lines[cursor.line].notes.length;
+      if (key === 'ArrowLeft') {
+        if (cursor.pos > 0) cursor.pos--;
+        else if (cursor.line > 0) { cursor.line--; cursor.pos = len(); }
+      } else if (key === 'ArrowRight') {
+        if (cursor.pos < len()) cursor.pos++;
+        else if (cursor.line < lines.length - 1) { cursor.line++; cursor.pos = 0; }
+      } else if (key === 'ArrowUp') {
+        if (cursor.line > 0) { cursor.line--; cursor.pos = Math.min(cursor.pos, len()); }
+        else cursor.pos = 0;
+      } else if (key === 'ArrowDown') {
+        if (cursor.line < lines.length - 1) { cursor.line++; cursor.pos = Math.min(cursor.pos, len()); }
+        else cursor.pos = len();
+      } else if (key === 'Home') {
+        cursor.pos = 0;
+      } else if (key === 'End') {
+        cursor.pos = len();
+      }
+      renderPad();
+    }
+
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      resetPlayer();
+      lastLiveNote = null;
+      lines = [{ notes: [], lyric: '' }];
+      cursor = { line: 0, pos: 0 };
+      renderPad();
+      setStatus('Ready. Everything runs in your browser.');
+    });
+
+    document.addEventListener('keydown', (e) => {
+      const tag = e.target.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
+      if (e.target.classList && e.target.classList.contains('bar') && (e.key === 'Enter' || e.key === ' ')) return; // bar handles its own strike
+      if (e.key >= '1' && e.key <= '8') { if (!e.repeat) strike(+e.key - 1); }
+      else if (e.key === 'Enter') { if (!e.repeat) newLine(); }
+      else if (e.key === 'Backspace') { e.preventDefault(); backspace(); }
+      else if (e.key === 'Delete') { forwardDelete(); }
+      else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) {
+        e.preventDefault();
+        moveCursor(e.key);
+      }
+    });
+
+    // ---------- Playback: steps note by note so it can pause, resume, restart ----------
+    const restartBtn = document.getElementById('restartBtn');
+    let player = { events: [], idx: 0, timer: null, playing: false };
+
+    function buildEvents() {
+      const evs = [];
+      lines.forEach((line, li) => {
+        line.notes.forEach((n, ni) => evs.push({ li, ni, rest: !!n.rest, i: n.i, sec: n.sec }));
+      });
+      return evs;
+    }
+    function updatePlayBtn() {
+      playBtn.disabled = !hasNotes();
+      restartBtn.disabled = !hasNotes();
+      playBtn.textContent = player.playing ? '⏸ Pause' : (player.idx > 0 ? '▶ Resume' : '▶ Play');
+    }
+    function clearPlayingHighlight() {
+      padEl.querySelectorAll('.playing').forEach(el => el.classList.remove('playing'));
+    }
+    function step() {
+      if (player.idx >= player.events.length) { finishPlayback(); return; }
+      const ev = player.events[player.idx];
+      const speed = parseInt(bpmSlider.value, 10) / 100; // 100% = play back exactly as recorded
+      const durMs = ev.sec * 1000 / speed;
+      if (!ev.rest) playNote(ev.i, 0, durMs * 0.9);
+      clearPlayingHighlight();
+      const el = padEl.querySelector(`[data-pos="${ev.li}-${ev.ni}"]`);
+      if (el) { el.classList.add('playing'); el.scrollIntoView({ block: 'nearest' }); }
+      player.idx++;
+      player.timer = setTimeout(step, durMs);
+    }
+    function startOrResume() {
+      if (player.playing) return;
+      if (player.idx === 0) player.events = buildEvents();
+      if (player.events.length === 0) return;
+      player.playing = true;
+      updatePlayBtn();
+      step();
+    }
+    function pausePlayback() {
+      clearTimeout(player.timer);
+      player.playing = false;
+      updatePlayBtn();
+    }
+    function finishPlayback() {
+      clearTimeout(player.timer);
+      player.playing = false;
+      player.idx = 0;
+      clearPlayingHighlight();
+      updatePlayBtn();
+    }
+    // any edit rewinds the player, since positions in the pad may have changed
+    function resetPlayer() { finishPlayback(); }
+
+    playBtn.addEventListener('click', () => {
+      playBtn.blur();
+      if (player.playing) pausePlayback(); else startOrResume();
+    });
+    restartBtn.addEventListener('click', () => {
+      restartBtn.blur();
+      finishPlayback();
+      startOrResume();
+    });
+
+    // ---------- Built-in tunes (public domain): notes + the rhyme line below ----------
+    // "5-" holds longer, "5--" longer still; "." is a short rest.
+    const EXAMPLES = {
+      "Twinkle Twinkle Little Star": [
+        { n: "1 1 5 5 6 6 5-", t: "Twinkle, twinkle, little star" },
+        { n: "4 4 3 3 2 2 1-", t: "How I wonder what you are" },
+        { n: "5 5 4 4 3 3 2-", t: "Up above the world so high" },
+        { n: "5 5 4 4 3 3 2-", t: "Like a diamond in the sky" },
+        { n: "1 1 5 5 6 6 5-", t: "Twinkle, twinkle, little star" },
+        { n: "4 4 3 3 2 2 1-", t: "How I wonder what you are" },
+      ],
+      "Mary Had a Little Lamb": [
+        { n: "3 2 1 2 3 3 3-", t: "Mary had a little lamb" },
+        { n: "2 2 2- 3 5 5-", t: "Little lamb, little lamb" },
+        { n: "3 2 1 2 3 3 3 3", t: "Mary had a little lamb, its" },
+        { n: "2 2 3 2 1-", t: "fleece was white as snow" },
+      ],
+      "Hot Cross Buns": [
+        { n: "3 2 1- 3 2 1-", t: "Hot cross buns, hot cross buns" },
+        { n: "1 1 1 1 2 2 2 2", t: "One a penny, two a penny" },
+        { n: "3 2 1-", t: "Hot cross buns" },
+      ],
+      "Ode to Joy": [
+        { n: "3 3 4 5 5 4 3 2", t: "" },
+        { n: "1 1 2 3 3- 2 2-", t: "" },
+        { n: "3 3 4 5 5 4 3 2", t: "" },
+        { n: "1 1 2 3 2- 1 1-", t: "" },
+      ],
+    };
+
+    function parseLine(str) {
+      const notes = [];
+      str.trim().split(/\s+/).forEach(tok => {
+        if (tok === '.') { notes.push({ rest: true, sec: REST_UNIT_SEC }); return; }
+        const m = tok.match(/^([1-8])(-*)$/);
+        if (m) notes.push({ i: +m[1] - 1, sec: (1 + m[2].length) * QUARTER_SEC });
+      });
+      return notes;
+    }
+
+    const sel = document.getElementById('exampleSelect');
+    Object.keys(EXAMPLES).forEach(name => {
+      const o = document.createElement('option');
+      o.value = name; o.textContent = name;
+      sel.appendChild(o);
+    });
+    sel.addEventListener('change', () => {
+      if (!sel.value) return;
+      resetPlayer();
+      lastLiveNote = null;
+      lines = EXAMPLES[sel.value].map(l => ({ notes: parseLine(l.n), lyric: l.t || '' }));
+      cursor = { line: lines.length - 1, pos: lines[lines.length - 1].notes.length };
+      renderPad();
+      setStatus(`Loaded "${sel.value}". Press ▶ Play.`);
+      sel.value = '';
+      sel.blur();
+    });
+
+    function setStatus(msg) { document.getElementById('status').textContent = msg; }
+
+    // ---------- Pitch detection (autocorrelation, ACF2+) ----------
+    function autoCorrelate(buf, sampleRate) {
+      let SIZE = buf.length;
+      let rms = 0;
+      for (let i = 0; i < SIZE; i++) { const v = buf[i]; rms += v * v; }
+      rms = Math.sqrt(rms / SIZE);
+      if (rms < 0.010) return -1; // too quiet
+
+      let r1 = 0, r2 = SIZE - 1, thres = 0.2;
+      for (let i = 0; i < SIZE / 2; i++) { if (Math.abs(buf[i]) < thres) { r1 = i; break; } }
+      for (let i = 1; i < SIZE / 2; i++) { if (Math.abs(buf[SIZE - i]) < thres) { r2 = SIZE - i; break; } }
+      buf = buf.slice(r1, r2);
+      SIZE = buf.length;
+      if (SIZE < 512) return -1;
+
+      const c = new Array(SIZE).fill(0);
+      for (let i = 0; i < SIZE; i++) {
+        for (let j = 0; j < SIZE - i; j++) { c[i] += buf[j] * buf[j + i]; }
+      }
+      let d = 0; while (c[d] > c[d + 1]) d++;
+      let maxval = -1, maxpos = -1;
+      for (let i = d; i < SIZE; i++) {
+        if (c[i] > maxval) { maxval = c[i]; maxpos = i; }
+      }
+      let T0 = maxpos;
+      if (T0 <= 0) return -1;
+      const x1 = c[T0 - 1] || c[T0], x2 = c[T0], x3 = c[T0 + 1] || c[T0];
+      const a = (x1 + x3 - 2 * x2) / 2, b = (x3 - x1) / 2;
+      if (a) T0 = T0 - b / (2 * a);
+      return sampleRate / T0;
+    }
+
+    function freqToNoteIndex(freq) {
+      if (freq <= 0) return -1;
+      // fold into the diatonic set by nearest pitch class, octave ignored
+      const semis = 12 * Math.log2(freq / 261.63);
+      const pitchClass = ((Math.round(semis) % 12) + 12) % 12;
+      const chromaticToScaleDegree = { 0: 0, 1: 0, 2: 1, 3: 1, 4: 2, 5: 3, 6: 3, 7: 4, 8: 4, 9: 5, 10: 5, 11: 6 };
+      return chromaticToScaleDegree[pitchClass];
+    }
+
+    // Detected notes flow into the pad; a phrase-length pause starts a new line, same as live playing
+    function loadDetected(detected) {
+      // detected: [{i, t}] with t = seconds into the file; real gaps become note durations
+      resetPlayer();
+      lastLiveNote = null;
+      lines = [{ notes: [], lyric: '' }];
+      detected.forEach((d, k) => {
+        const next = detected[k + 1];
+        const gap = next ? next.t - d.t : QUARTER_SEC;
+        if (lines[lines.length - 1].notes.length >= 8) lines.push({ notes: [], lyric: '' });
+        lines[lines.length - 1].notes.push({ i: d.i, sec: clamp(gap, MIN_LIVE_GAP_SEC, MAX_PAUSE_SEC) });
+        if (next && gap > PHRASE_BREAK_SEC) lines.push({ notes: [], lyric: '' });
+      });
+      cursor = { line: lines.length - 1, pos: lines[lines.length - 1].notes.length };
+      renderPad();
+    }
+
+    // ---------- Microphone humming mode ----------
+    let micStream = null, micAnalyser = null, micRunning = false, micRAF = null;
+    let lastNote = -1, stableCount = 0, lastAddTime = 0, lastMicNoteRef = null;
+    const micBtn = document.getElementById('micBtn');
+
+    micBtn.addEventListener('click', async () => {
+      if (micRunning) { stopMic(); return; }
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (e) {
+        setStatus("Couldn't access the microphone. Check the browser's permission settings.");
+        return;
+      }
+      const ac = ctx();
+      const micSource = ac.createMediaStreamSource(micStream);
+      micAnalyser = ac.createAnalyser();
+      micAnalyser.fftSize = 2048;
+      micSource.connect(micAnalyser);
+      micRunning = true;
+      micBtn.textContent = '⏹ Stop';
+      micBtn.classList.add('danger');
+      micBtn.blur();
+      resetPlayer();
+      lastLiveNote = null;
+      lines = [{ notes: [], lyric: '' }];
+      cursor = { line: 0, pos: 0 };
+      renderPad();
+      setStatus('Listening… hum or sing your tune.');
+      lastNote = -1; stableCount = 0; lastAddTime = 0; lastMicNoteRef = null;
+      const buf = new Float32Array(micAnalyser.fftSize);
+      function loop() {
+        if (!micRunning) return;
+        micAnalyser.getFloatTimeDomainData(buf);
+        const freq = autoCorrelate(buf, ac.sampleRate);
+        if (freq > 0 && freq < 1200) {
+          const idx = freqToNoteIndex(freq);
+          if (idx === lastNote) { stableCount++; } else { lastNote = idx; stableCount = 1; }
+          const now = performance.now();
+          if (stableCount === 4 && now - lastAddTime > 280) {
+            if (lastMicNoteRef) {
+              const gapSec = (now - lastAddTime) / 1000;
+              lastMicNoteRef.sec = clamp(gapSec, MIN_LIVE_GAP_SEC, MAX_PAUSE_SEC);
+              if (gapSec > PHRASE_BREAK_SEC) lines.push({ notes: [], lyric: '' });
+            }
+            const cur = lines[lines.length - 1];
+            if (cur.notes.length >= 8) lines.push({ notes: [], lyric: '' });
+            const note = { i: idx, sec: QUARTER_SEC };
+            lines[lines.length - 1].notes.push(note);
+            lastMicNoteRef = note;
+            cursor = { line: lines.length - 1, pos: lines[lines.length - 1].notes.length };
+            renderPad();
+            playNote(idx);
+            lastAddTime = now;
+          }
+        }
+        micRAF = requestAnimationFrame(loop);
+      }
+      loop();
+    });
+    function stopMic() {
+      micRunning = false;
+      if (micRAF) cancelAnimationFrame(micRAF);
+      if (micStream) micStream.getTracks().forEach(t => t.stop());
+      micBtn.textContent = '🎤 Hum it';
+      micBtn.classList.remove('danger');
+      const count = lines.reduce((s, l) => s + l.notes.length, 0);
+      setStatus(count ? `Got ${count} notes. Press ▶ Play, or tap bars to add more.` : 'No clear notes detected. Try humming louder and slower.');
+    }
+
+    // ---------- File upload mode ----------
+    const fileBtn = document.getElementById('fileBtn');
+    const fileInput = document.getElementById('fileInput');
+    fileBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      setStatus('Analyzing audio…');
+      try {
+        const ac = ctx();
+        const arrayBuf = await file.arrayBuffer();
+        const audioBuf = await ac.decodeAudioData(arrayBuf);
+        const channel = audioBuf.getChannelData(0);
+        const sr = audioBuf.sampleRate;
+        const winSize = 2048, hop = 1024;
+        const detected = [];
+        let lastN = -1, stable = 0;
+        for (let start = 0; start + winSize < channel.length; start += hop) {
+          const frame = channel.subarray(start, start + winSize);
+          const freq = autoCorrelate(frame, sr);
+          if (freq > 60 && freq < 1200) {
+            const idx = freqToNoteIndex(freq);
+            if (idx === lastN) { stable++; } else { lastN = idx; stable = 1; }
+            if (stable === 3) {
+              const t = start / sr;
+              if (detected.length === 0 || detected[detected.length - 1].i !== idx) detected.push({ i: idx, t });
+            }
+          } else {
+            lastN = -1; stable = 0;
+          }
+          if (detected.length >= 48) break; // keep it toy-sized
+        }
+        if (detected.length === 0) {
+          setStatus("Couldn't find a clear melody. Songs with many instruments are hard to read; try a hummed or a cappella recording.");
+        } else {
+          loadDetected(detected);
+          setStatus(`Found ${detected.length} notes. Tap bars to touch up any, then press ▶ Play.`);
+        }
+      } catch (err) {
+        setStatus("Couldn't read that audio file. MP3 or WAV work best.");
+      }
+      fileInput.value = '';
+    });
+
+    renderPad();
+  </script>
+</body>
+
+</html>
