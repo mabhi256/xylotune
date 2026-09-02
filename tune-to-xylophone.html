@@ -66,7 +66,7 @@
     }
 
     .wrap {
-      max-width: 860px;
+      max-width: 1120px;
       margin: 0 auto;
     }
 
@@ -132,6 +132,10 @@
       border-color: transparent;
     }
 
+    button.danger:hover {
+      background: #c2443a;
+    }
+
     select {
       font: 600 13px inherit;
       font-family: inherit;
@@ -181,7 +185,7 @@
       align-items: start;
     }
 
-    @media (max-width:700px) {
+    @media (max-width:880px) {
       .main {
         grid-template-columns: 1fr;
       }
@@ -195,12 +199,20 @@
       padding: 12px;
     }
 
+    .pad-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
     .toolbar {
       display: flex;
       align-items: center;
       gap: 8px;
       flex-wrap: wrap;
-      margin-bottom: 10px;
     }
 
     .tempo {
@@ -221,10 +233,16 @@
     }
 
     .pad {
-      min-height: 280px;
-      max-height: 340px;
+      min-height: 420px;
+      max-height: 520px;
       overflow-y: auto;
       padding: 2px 4px;
+    }
+
+    .pad-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 10px;
     }
 
     .pline {
@@ -313,6 +331,12 @@
       animation: blink 1.1s steps(1) infinite;
     }
 
+    /* Hug the dot before it - backspace consumes that dot, so the caret
+       should read as sitting right against it, not floating past it. */
+    .gap+.caret {
+      margin-left: -10px;
+    }
+
     @keyframes blink {
       50% {
         opacity: 0;
@@ -361,35 +385,37 @@
     .xylo-panel {
       order: -1;
       display: flex;
+      flex-direction: column;
       justify-content: center;
       align-items: center;
-      min-height: 320px;
+      gap: 20px;
+      min-height: 520px;
     }
 
     .xylo {
       display: flex;
       justify-content: center;
       align-items: center;
-      gap: clamp(5px, 1vw, 9px);
+      gap: clamp(6px, 1.3vw, 13px);
     }
 
     .key {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
     }
 
     .bar {
-      width: clamp(30px, 4.2vw, 40px);
-      border-radius: 8px;
+      width: clamp(38px, 5.6vw, 54px);
+      border-radius: 10px;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       font-family: Georgia, "Times New Roman", serif;
       font-weight: 700;
-      font-size: 20px;
+      font-size: 26px;
       color: #17181a;
       box-shadow: 0 3px 8px rgba(0, 0, 0, .4);
       transition: filter .07s ease, transform .07s ease;
@@ -427,7 +453,7 @@
     }
 
     .num {
-      font-size: 14px;
+      font-size: 16px;
       color: #cfd2d6;
       font-weight: 600;
     }
@@ -458,10 +484,6 @@
     <header>
       <h1>Tune to Xylophone</h1>
       <div class="controls">
-        <div class="sound-toggle" id="soundToggle" role="group" aria-label="Bar material">
-          <button type="button" class="toggle-btn active" data-sound="metal">🔔 Metal</button>
-          <button type="button" class="toggle-btn" data-sound="wood">🪵 Wood</button>
-        </div>
         <button id="micBtn">🎤 Hum it</button>
         <button id="fileBtn">📁 Upload</button>
         <input id="fileInput" type="file" accept="audio/*" style="display:none">
@@ -473,20 +495,30 @@
 
     <div class="main">
       <section class="pad-panel">
-        <div class="toolbar">
-          <button id="playBtn" class="primary" disabled>▶ Play</button>
-          <button id="restartBtn" disabled title="Restart from the beginning" aria-label="Restart">⏮</button>
-          <button id="clearBtn">✕ Clear</button>
-          <div class="tempo">
-            <span id="bpmLabel">Speed 100%</span>
-            <input type="range" id="bpmSlider" min="50" max="200" value="100" step="10">
+        <div class="pad-header">
+          <div class="toolbar">
+            <button id="playBtn" class="primary" disabled>▶ Play</button>
+            <button id="restartBtn" disabled title="Restart from the beginning" aria-label="Restart">⏮</button>
+            <button id="clearBtn">✕ Clear</button>
+            <div class="tempo">
+              <span id="bpmLabel">Speed 100%</span>
+              <input type="range" id="bpmSlider" min="50" max="200" value="100" step="10">
+            </div>
           </div>
+          <button id="deleteSongBtn" class="danger" disabled title="Delete the loaded song">🗑 Delete</button>
         </div>
         <div class="pad" id="pad"></div>
+        <div class="pad-actions">
+          <button id="saveSongBtn">💾 Save</button>
+        </div>
       </section>
 
       <section class="xylo-panel">
         <div class="xylo" id="xylo"></div>
+        <div class="sound-toggle" id="soundToggle" role="group" aria-label="Bar material">
+          <button type="button" class="toggle-btn active" data-sound="metal">🔔 Metal</button>
+          <button type="button" class="toggle-btn" data-sound="wood">🪵 Wood</button>
+        </div>
       </section>
     </div>
   </div>
@@ -524,7 +556,7 @@
       const bar = document.createElement('div');
       bar.className = 'bar';
       bar.style.backgroundColor = n.color; // longhand, so the wood-grain background-image (CSS) isn't reset
-      bar.style.height = (230 - i * 12) + 'px';
+      bar.style.height = (310 - i * 16) + 'px';
       bar.textContent = n.label || n.name;
       bar.setAttribute('role', 'button');
       bar.setAttribute('tabindex', '0');
@@ -932,6 +964,8 @@
       lastLiveNote = null;
       lines = [{ notes: [], lyric: '' }];
       cursor = { line: 0, pos: 0 };
+      setCurrentSong(null);
+      selectTuneOption(null);
       renderPad();
     });
 
@@ -1055,21 +1089,112 @@
       return notes;
     }
 
+    // ---------- Saved songs: your own tunes, kept in localStorage ----------
+    // savedSongs: { [name]: { lines } } - same lines shape the pad itself uses,
+    // so a saved song replays with its exact recorded timing, not a quantized guess.
+    function loadSavedSongs() {
+      try { return JSON.parse(localStorage.getItem('xyloSongs')) || {}; }
+      catch { return {}; }
+    }
+    function persistSavedSongs() {
+      try { localStorage.setItem('xyloSongs', JSON.stringify(savedSongs)); }
+      catch { /* ignore, e.g. storage disabled */ }
+    }
+    function cloneLines(ls) {
+      return ls.map(l => ({ lyric: l.lyric, notes: l.notes.map(n => ({ ...n })) }));
+    }
+    let savedSongs = loadSavedSongs();
+    let currentSongName = null; // the saved song currently loaded in the pad, if any - lets Save update it in place
+
     const sel = document.getElementById('exampleSelect');
-    Object.keys(EXAMPLES).forEach(name => {
-      const o = document.createElement('option');
-      o.value = name; o.textContent = name;
-      sel.appendChild(o);
-    });
+    const saveSongBtn = document.getElementById('saveSongBtn');
+    const deleteSongBtn = document.getElementById('deleteSongBtn');
+
+    function setCurrentSong(name) {
+      currentSongName = name;
+      deleteSongBtn.disabled = !currentSongName;
+    }
+
+    function refreshSongSelect() {
+      sel.innerHTML = '';
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Pick a tune…';
+      sel.appendChild(placeholder);
+
+      const builtGroup = document.createElement('optgroup');
+      builtGroup.label = 'Built-in';
+      Object.keys(EXAMPLES).forEach(name => {
+        const o = document.createElement('option');
+        o.value = name; o.textContent = name; o.dataset.kind = 'example';
+        builtGroup.appendChild(o);
+      });
+      sel.appendChild(builtGroup);
+
+      const names = Object.keys(savedSongs).sort((a, b) => a.localeCompare(b));
+      if (names.length) {
+        const mineGroup = document.createElement('optgroup');
+        mineGroup.label = 'My Songs';
+        names.forEach(name => {
+          const o = document.createElement('option');
+          o.value = name; o.textContent = name; o.dataset.kind = 'song';
+          mineGroup.appendChild(o);
+        });
+        sel.appendChild(mineGroup);
+      }
+    }
+    refreshSongSelect();
+
+    // Selects the option matching this exact kind+name (not just value, since a saved
+    // song's name can collide with a built-in's) - falls back to the placeholder.
+    function selectTuneOption(kind, name) {
+      const opt = kind && Array.from(sel.options).find(o => o.dataset.kind === kind && o.value === name);
+      if (opt) opt.selected = true; else sel.value = '';
+    }
+
     sel.addEventListener('change', () => {
       if (!sel.value) return;
+      const opt = sel.selectedOptions[0];
       resetPlayer();
       lastLiveNote = null;
-      lines = EXAMPLES[sel.value].map(l => ({ notes: parseLine(l.n), lyric: l.t || '' }));
+      if (opt.dataset.kind === 'song') {
+        lines = cloneLines(savedSongs[opt.value].lines);
+        setCurrentSong(opt.value);
+      } else {
+        lines = EXAMPLES[opt.value].map(l => ({ notes: parseLine(l.n), lyric: l.t || '' }));
+        setCurrentSong(null);
+      }
       cursor = { line: lines.length - 1, pos: lines[lines.length - 1].notes.length };
       renderPad();
-      sel.value = '';
       sel.blur();
+    });
+
+    saveSongBtn.addEventListener('click', () => {
+      saveSongBtn.blur();
+      if (!hasNotes()) { alert('Play or write some notes before saving a song.'); return; }
+      const name = prompt('Song name:', currentSongName || '');
+      if (name === null) return;
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      if (savedSongs[trimmed] && trimmed !== currentSongName) {
+        if (!confirm(`"${trimmed}" already exists. Overwrite it?`)) return;
+      }
+      savedSongs[trimmed] = { lines: cloneLines(lines) };
+      persistSavedSongs();
+      refreshSongSelect();
+      setCurrentSong(trimmed);
+      selectTuneOption('song', trimmed);
+    });
+
+    deleteSongBtn.addEventListener('click', () => {
+      deleteSongBtn.blur();
+      if (!currentSongName) return;
+      if (!confirm(`Delete "${currentSongName}"?`)) return;
+      delete savedSongs[currentSongName];
+      persistSavedSongs();
+      refreshSongSelect();
+      setCurrentSong(null);
+      selectTuneOption(null);
     });
 
     // ---------- Pitch detection (autocorrelation, ACF2+) ----------
@@ -1119,6 +1244,8 @@
       resetPlayer();
       lastLiveNote = null;
       lines = [{ notes: [], lyric: '' }];
+      setCurrentSong(null);
+      selectTuneOption(null);
       detected.forEach((d, k) => {
         const next = detected[k + 1];
         const gap = next ? next.t - d.t : QUARTER_SEC;
@@ -1156,6 +1283,8 @@
       lastLiveNote = null;
       lines = [{ notes: [], lyric: '' }];
       cursor = { line: 0, pos: 0 };
+      setCurrentSong(null);
+      selectTuneOption(null);
       renderPad();
       lastNote = -1; stableCount = 0; lastAddTime = 0; lastMicNoteRef = null;
       const buf = new Float32Array(micAnalyser.fftSize);
