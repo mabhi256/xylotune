@@ -12,6 +12,8 @@
       --border: #3a3d42;
       --text: #e8eaed;
       --muted: #9aa0a6;
+      --accent: #12897e;
+      /* app chrome accent (play button, active toggle, slider) - stays put across bar materials */
       --c1: #d63c30;
       /* C  red */
       --c2: #ee9421;
@@ -28,6 +30,26 @@
       /* B  purple */
       --c8: #d84941;
       /* C' red */
+    }
+
+    /* Wood material: swaps the rainbow bar/chip palette for an oak-to-walnut gradient. */
+    body[data-material="wood"] {
+      --c1: hsl(32, 42%, 62%);
+      /* C  light oak */
+      --c2: hsl(31, 42%, 59%);
+      /* D */
+      --c3: hsl(30, 43%, 55%);
+      /* E */
+      --c4: hsl(28, 43%, 52%);
+      /* F */
+      --c5: hsl(27, 44%, 48%);
+      /* G */
+      --c6: hsl(25, 45%, 45%);
+      /* A */
+      --c7: hsl(24, 46%, 41%);
+      /* B */
+      --c8: hsl(22, 47%, 38%);
+      /* C' walnut */
     }
 
     * {
@@ -97,7 +119,7 @@
     }
 
     button.primary {
-      background: var(--c5);
+      background: var(--accent);
       border-color: transparent;
     }
 
@@ -118,6 +140,37 @@
       border: 1px solid var(--border);
       background: #35383d;
       color: var(--text);
+    }
+
+    .sound-toggle {
+      display: flex;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .toggle-btn {
+      font: 600 13px inherit;
+      font-family: inherit;
+      border: none;
+      padding: 7px 12px;
+      cursor: pointer;
+      color: var(--muted);
+      background: #35383d;
+      transition: background .1s ease, color .1s ease;
+    }
+
+    .toggle-btn:not(:last-child) {
+      border-right: 1px solid var(--border);
+    }
+
+    .toggle-btn:hover {
+      background: #3f434a;
+    }
+
+    .toggle-btn.active {
+      background: var(--accent);
+      color: #fff;
     }
 
     /* Two columns: xylophone left, pad right */
@@ -159,7 +212,7 @@
 
     .tempo input[type=range] {
       width: 90px;
-      accent-color: var(--c5);
+      accent-color: var(--accent);
     }
 
     #bpmLabel {
@@ -334,6 +387,20 @@
       filter: brightness(1.1);
     }
 
+    body[data-material="wood"] .bar {
+      background-image:
+        repeating-linear-gradient(180deg,
+          rgba(0, 0, 0, .08) 0px,
+          rgba(0, 0, 0, .08) 1px,
+          transparent 1px,
+          transparent 5px,
+          rgba(255, 255, 255, .05) 5px,
+          rgba(255, 255, 255, .05) 6px,
+          transparent 6px,
+          transparent 13px);
+      box-shadow: 0 3px 8px rgba(0, 0, 0, .4), inset 0 1px 0 rgba(255, 255, 255, .15);
+    }
+
     .bar.active {
       filter: brightness(1.35);
       transform: scale(.97);
@@ -383,6 +450,10 @@
     <header>
       <h1>Tune to Xylophone</h1>
       <div class="controls">
+        <div class="sound-toggle" id="soundToggle" role="group" aria-label="Bar material">
+          <button type="button" class="toggle-btn active" data-sound="metal">🔔 Metal</button>
+          <button type="button" class="toggle-btn" data-sound="wood">🪵 Wood</button>
+        </div>
         <button id="micBtn">🎤 Hum it</button>
         <button id="fileBtn">📁 Upload</button>
         <input id="fileInput" type="file" accept="audio/*" style="display:none">
@@ -419,6 +490,7 @@
       </section>
     </div>
 
+    <div class="status" id="status"></div>
   </div>
 
   <script>
@@ -442,7 +514,7 @@
       key.className = 'key';
       const bar = document.createElement('div');
       bar.className = 'bar';
-      bar.style.background = n.color;
+      bar.style.backgroundColor = n.color; // longhand, so the wood-grain background-image (CSS) isn't reset
       bar.style.height = (230 - i * 12) + 'px';
       bar.textContent = n.label || n.name;
       bar.setAttribute('role', 'button');
@@ -488,30 +560,84 @@
       return noiseBuffer;
     }
 
+    // Two bar materials, modeled as different modal profiles for the same struck-bar synth:
+    // metal keeps a long, bright, shimmering ring (detuned mode pair beats against itself);
+    // wood swaps in a marimba-style undercut-tuned partial set with a fast, dry decay and a
+    // louder low "thock" from the mallet strike instead of metal's high "ting".
+    const SOUND_PROFILES = {
+      metal: {
+        modes: [
+          { ratio: 1.000, gain: 0.55, decay: 1.5 },
+          { ratio: 1.004, gain: 0.28, decay: 1.3 }, // detuned pair gives the natural shimmer
+          { ratio: 2.756, gain: 0.20, decay: 0.60 },
+          { ratio: 5.404, gain: 0.11, decay: 0.30 },
+          { ratio: 8.933, gain: 0.05, decay: 0.16 },
+        ],
+        noise: { freqMul: 2.5, gain: 0.22, decay: 0.012 },
+        lowpass: null,
+      },
+      wood: {
+        modes: [
+          { ratio: 1.000, gain: 0.70, decay: 0.35 },
+          { ratio: 3.932, gain: 0.16, decay: 0.20 }, // undercut-tuned 2nd partial, marimba-style
+          { ratio: 9.538, gain: 0.05, decay: 0.09 },
+        ],
+        noise: { freqMul: 1.1, gain: 0.40, decay: 0.02 },
+        lowpass: 3400, // dulls the attack/overtones for a warmer, woodier tone
+      },
+    };
+    function loadSoundPref() {
+      try { return localStorage.getItem('xyloSound') === 'wood' ? 'wood' : 'metal'; }
+      catch { return 'metal'; }
+    }
+    function saveSoundPref(v) {
+      try { localStorage.setItem('xyloSound', v); } catch { /* ignore, e.g. storage disabled */ }
+    }
+    let soundType = loadSoundPref();
+    document.body.dataset.material = soundType; // drives bar/chip color + grain via CSS vars
+
+    const soundToggle = document.getElementById('soundToggle');
+    function updateSoundToggleUI() {
+      soundToggle.querySelectorAll('.toggle-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.sound === soundType);
+      });
+    }
+    soundToggle.addEventListener('click', (e) => {
+      const btn = e.target.closest('.toggle-btn');
+      if (!btn || btn.dataset.sound === soundType) return;
+      soundType = btn.dataset.sound;
+      saveSoundPref(soundType);
+      document.body.dataset.material = soundType;
+      updateSoundToggleUI();
+    });
+    updateSoundToggleUI();
+
     function playNote(i, when = 0, holdMs = 180) {
       const ac = ctx();
       const t0 = ac.currentTime + when;
       const freq = NOTES[i].freq * (1 + (Math.random() - 0.5) * 0.002);
+      const profile = SOUND_PROFILES[soundType];
       const out = ac.createGain();
       out.gain.value = 1;
-      let dest = out;
+      const dest = out;
+      let chainEnd = out;
+      if (profile.lowpass) {
+        const lp = ac.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.value = profile.lowpass;
+        out.connect(lp);
+        chainEnd = lp;
+      }
       if (ac.createStereoPanner) {
         const pan = ac.createStereoPanner();
         pan.pan.value = (i / 7 - 0.5) * 0.6;
-        out.connect(pan); pan.connect(bus);
+        chainEnd.connect(pan); pan.connect(bus);
       } else {
-        out.connect(bus);
+        chainEnd.connect(bus);
       }
 
-      // Transverse modes of a free metal bar, fundamental dominant, ringing tail
-      const modes = [
-        { ratio: 1.000, gain: 0.55, decay: 1.5 },
-        { ratio: 1.004, gain: 0.28, decay: 1.3 }, // detuned pair gives the natural shimmer
-        { ratio: 2.756, gain: 0.20, decay: 0.60 },
-        { ratio: 5.404, gain: 0.11, decay: 0.30 },
-        { ratio: 8.933, gain: 0.05, decay: 0.16 },
-      ];
-      modes.forEach(m => {
+      // Transverse modes of the struck bar, fundamental dominant, ringing tail
+      profile.modes.forEach(m => {
         const osc = ac.createOscillator();
         osc.type = 'sine';
         osc.frequency.value = freq * m.ratio;
@@ -524,19 +650,19 @@
         osc.stop(t0 + m.decay + 0.3);
       });
 
-      // Soft mallet contact: short band-limited noise tick
+      // Mallet contact: short band-limited noise tick (metal: a high "ting"; wood: a low "thock")
       const noise = ac.createBufferSource();
       noise.buffer = getNoiseBuffer(ac);
       const bp = ac.createBiquadFilter();
       bp.type = 'bandpass';
-      bp.frequency.value = freq * 2.5;
+      bp.frequency.value = freq * profile.noise.freqMul;
       bp.Q.value = 1.0;
       const ng = ac.createGain();
-      ng.gain.setValueAtTime(0.22, t0);
-      ng.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.012);
+      ng.gain.setValueAtTime(profile.noise.gain, t0);
+      ng.gain.exponentialRampToValueAtTime(0.0001, t0 + profile.noise.decay);
       noise.connect(bp); bp.connect(ng); ng.connect(dest);
       noise.start(t0);
-      noise.stop(t0 + 0.03);
+      noise.stop(t0 + profile.noise.decay + 0.02);
 
       setTimeout(() => {
         barEls[i].classList.add('active');
