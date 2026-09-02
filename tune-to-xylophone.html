@@ -1195,6 +1195,11 @@
       refreshSongSelect();
       setCurrentSong(null);
       selectTuneOption(null);
+      resetPlayer();
+      lastLiveNote = null;
+      lines = [{ notes: [], lyric: '' }];
+      cursor = { line: 0, pos: 0 };
+      renderPad();
     });
 
     // ---------- Pitch detection (autocorrelation, ACF2+) ----------
