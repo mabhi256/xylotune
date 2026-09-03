@@ -51,9 +51,24 @@
       box-shadow: 0 3px 8px rgba(0, 0, 0, .4), inset 0 1px 0 rgba(255, 255, 255, .15);
     }
 
+    /* Re-added and reflow-forced on every strike (see playNote) so two fast presses of the
+       same bar restart the animation from frame 0 instead of blending into one held flash. */
     .bar.active {
-      filter: brightness(1.35);
-      transform: scale(.97);
+      animation: barStrike var(--strike-dur, 180ms) cubic-bezier(.2, .9, .3, 1);
+    }
+
+    @keyframes barStrike {
+      0% {
+        background-color: color-mix(in srgb, var(--bar-color) 45%, white 55%);
+        filter: brightness(1.25);
+        transform: scale(.92);
+      }
+
+      100% {
+        background-color: var(--bar-color);
+        filter: brightness(1);
+        transform: scale(1);
+      }
     }
 
     .chip.playing {
@@ -112,7 +127,12 @@
         animation: none !important;
       }
 
-      .bar.active,
+      .bar.active {
+        background-color: color-mix(in srgb, var(--bar-color) 55%, white 45%);
+        filter: brightness(1.25);
+        transform: none;
+      }
+
       .chip.playing {
         transform: none;
       }
@@ -243,8 +263,17 @@
       const el = barEls && barEls[i];
       if (el) {
         setTimeout(() => {
+          // Two strikes on the same bar within `holdMs` (a real double press, not OS
+          // key-repeat) would otherwise share one 'active' class: the second add is a
+          // no-op since the class is already set, and the first strike's removal timer
+          // would then cut the second flash short. Tagging each strike and restarting the
+          // CSS animation via remove/reflow/add makes every press its own visible pulse.
+          const strikeId = (el._strikeId = (el._strikeId || 0) + 1);
+          el.style.setProperty('--strike-dur', holdMs + 'ms');
+          el.classList.remove('active');
+          void el.offsetWidth; // force reflow so the animation restarts from frame 0
           el.classList.add('active');
-          setTimeout(() => el.classList.remove('active'), holdMs);
+          setTimeout(() => { if (el._strikeId === strikeId) el.classList.remove('active'); }, holdMs);
         }, Math.max(0, when * 1000));
       }
     }
@@ -443,7 +472,7 @@
           <div
             ref=${barRef}
             class="bar w-[clamp(38px,5.6vw,54px)] rounded-[10px] cursor-pointer flex items-center justify-center [font-family:Georgia,'Times_New_Roman',serif] font-bold text-[26px] text-[#17181a] shadow-[0_3px_8px_rgba(0,0,0,.4)] transition-[filter,transform] duration-75 select-none [-webkit-tap-highlight-color:transparent] [touch-action:manipulation] hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white focus-visible:outline-offset-[3px]"
-            style=${{ backgroundColor: note.color, height: (310 - index * 16) + 'px' }}
+            style=${{ '--bar-color': note.color, backgroundColor: note.color, height: (310 - index * 16) + 'px' }}
             role="button"
             tabindex="0"
             aria-label=${`Bar ${index + 1}, note ${note.label || note.name}`}
