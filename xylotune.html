@@ -361,45 +361,6 @@
       anchor.lyricEnd = charEnd;
       anchor.lyricSpan = noteEnd - noteStart + 1;
     }
-    // ---------- Built-in tunes (public domain): notes + the rhyme line below ----------
-    // "5-" holds longer, "5--" longer still; "." is a short rest.
-    const EXAMPLES = {
-      "Twinkle Twinkle Little Star": [
-        { n: "1 1 5 5 6 6 5-", t: "Twinkle, twinkle, little star" },
-        { n: "4 4 3 3 2 2 1-", t: "How I wonder what you are" },
-        { n: "5 5 4 4 3 3 2-", t: "Up above the world so high" },
-        { n: "5 5 4 4 3 3 2-", t: "Like a diamond in the sky" },
-        { n: "1 1 5 5 6 6 5-", t: "Twinkle, twinkle, little star" },
-        { n: "4 4 3 3 2 2 1-", t: "How I wonder what you are" },
-      ],
-      "Mary Had a Little Lamb": [
-        { n: "3 2 1 2 3 3 3-", t: "Mary had a little lamb" },
-        { n: "2 2 2- 3 5 5-", t: "Little lamb, little lamb" },
-        { n: "3 2 1 2 3 3 3 3", t: "Mary had a little lamb, its" },
-        { n: "2 2 3 2 1-", t: "fleece was white as snow" },
-      ],
-      "Hot Cross Buns": [
-        { n: "3 2 1- 3 2 1-", t: "Hot cross buns, hot cross buns" },
-        { n: "1 1 1 1 2 2 2 2", t: "One a penny, two a penny" },
-        { n: "3 2 1-", t: "Hot cross buns" },
-      ],
-      "Ode to Joy": [
-        { n: "3 3 4 5 5 4 3 2", t: "" },
-        { n: "1 1 2 3 3- 2 2-", t: "" },
-        { n: "3 3 4 5 5 4 3 2", t: "" },
-        { n: "1 1 2 3 2- 1 1-", t: "" },
-      ],
-    };
-    function parseLine(str) {
-      const notes = [];
-      str.trim().split(/\s+/).forEach(tok => {
-        if (tok === '.') { notes.push({ rest: true, sec: REST_UNIT_SEC }); return; }
-        const m = tok.match(/^([1-8])(-*)$/);
-        if (m) notes.push({ i: +m[1] - 1, sec: (1 + m[2].length) * QUARTER_SEC });
-      });
-      return notes;
-    }
-
     // ---------- Saved songs: your own tunes, kept in localStorage ----------
     function loadSavedSongs() {
       try { return JSON.parse(localStorage.getItem('xyloSongs')) || {}; }
@@ -411,6 +372,138 @@
     }
     function cloneLines(ls) {
       return ls.map(l => ({ lyric: l.lyric, notes: l.notes.map(n => ({ ...n })) }));
+    }
+
+    // ---------- Google Drive sync: one JSON file in the user's own Drive ----------
+    // Scoped to drive.file (only files this app itself creates/opens, never full Drive
+    // access), authorized via Google Identity Services' implicit token flow - no server,
+    // no refresh token on disk. The access token lives in memory only, for this tab.
+    // Each song carries its own updatedAt; deletions leave a tombstone (deletedAt) rather
+    // than just vanishing, so merging two devices' state is a plain per-song "latest
+    // timestamp wins" instead of a full-file overwrite that could resurrect a deleted song
+    // or clobber an edit made offline on the other device.
+    const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+    const DRIVE_SYNC_FILENAME = 'xylotune-songs.json';
+    const GIS_SCRIPT_URL = 'https://accounts.google.com/gsi/client';
+
+    function loadDriveClientId() {
+      try { return localStorage.getItem('xyloDriveClientId') || ''; }
+      catch { return ''; }
+    }
+    function saveDriveClientId(id) {
+      try { localStorage.setItem('xyloDriveClientId', id); }
+      catch { /* ignore, e.g. storage disabled */ }
+    }
+    function loadDriveConnected() {
+      try { return localStorage.getItem('xyloDriveConnected') === '1'; }
+      catch { return false; }
+    }
+    function saveDriveConnected(v) {
+      try { v ? localStorage.setItem('xyloDriveConnected', '1') : localStorage.removeItem('xyloDriveConnected'); }
+      catch { /* ignore */ }
+    }
+    function loadTombstones() {
+      try { return JSON.parse(localStorage.getItem('xyloTombstones')) || {}; }
+      catch { return {}; }
+    }
+    function persistTombstones(t) {
+      try { localStorage.setItem('xyloTombstones', JSON.stringify(t)); }
+      catch { /* ignore */ }
+    }
+
+    // Loaded lazily, only when the user actually tries to connect - mirrors how Basic
+    // Pitch is loaded below, so opening the app never pulls in Google's script or makes
+    // any network request on its own.
+    let gisPromise = null;
+    function loadGoogleIdentity() {
+      if (window.google && window.google.accounts && window.google.accounts.oauth2) return Promise.resolve();
+      if (gisPromise) return gisPromise;
+      gisPromise = new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = GIS_SCRIPT_URL;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error("Couldn't load Google's sign-in library. Check your connection."));
+        document.head.appendChild(script);
+      });
+      gisPromise.catch(() => { gisPromise = null; });
+      return gisPromise;
+    }
+
+    let driveTokenClient = null;
+    let driveAccessToken = null;
+    function initDriveTokenClient(clientId) {
+      driveTokenClient = google.accounts.oauth2.initTokenClient({ client_id: clientId, scope: DRIVE_SCOPE, callback: () => { } });
+    }
+    function requestDriveToken(promptMode) {
+      return new Promise((resolve, reject) => {
+        driveTokenClient.callback = (resp) => {
+          if (resp.error) { reject(new Error(resp.error)); return; }
+          driveAccessToken = resp.access_token;
+          resolve(driveAccessToken);
+        };
+        driveTokenClient.error_callback = (err) => reject(new Error((err && err.type) || 'Google sign-in was cancelled'));
+        driveTokenClient.requestAccessToken({ prompt: promptMode });
+      });
+    }
+    // One retry on a 401, via a silent (no popup) token refresh - covers the token simply
+    // expiring mid-session without bothering the user for a fresh consent.
+    async function driveFetch(path, options = {}, retry = true) {
+      const res = await fetch(path, { ...options, headers: { ...(options.headers || {}), Authorization: `Bearer ${driveAccessToken}` } });
+      if (res.status === 401 && retry) {
+        await requestDriveToken('');
+        return driveFetch(path, options, false);
+      }
+      if (!res.ok) throw new Error(`Drive request failed (${res.status})`);
+      return res;
+    }
+    async function findSyncFileId() {
+      const q = encodeURIComponent(`name='${DRIVE_SYNC_FILENAME}' and trashed=false`);
+      const res = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id)`);
+      const data = await res.json();
+      return data.files && data.files[0] ? data.files[0].id : null;
+    }
+    async function downloadSyncFile(fileId) {
+      const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+      return res.json();
+    }
+    async function uploadSyncFile(fileId, body) {
+      const json = JSON.stringify(body);
+      if (fileId) {
+        await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: json,
+        });
+        return fileId;
+      }
+      const metadata = { name: DRIVE_SYNC_FILENAME, mimeType: 'application/json' };
+      const boundary = 'xylotune-boundary';
+      const multipartBody =
+        `--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(metadata)}\r\n` +
+        `--${boundary}\r\nContent-Type: application/json\r\n\r\n${json}\r\n--${boundary}--`;
+      const res = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`, {
+        method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body: multipartBody,
+      });
+      const data = await res.json();
+      return data.id;
+    }
+    // Per song: the side with the latest event (a save or a delete) wins. A name can only
+    // ever be a live song on one side and a tombstone on the other (or both/neither), never
+    // both a song and a tombstone on the same side, so there's no ambiguity to break.
+    function mergeSyncState(localSongs, localTombstones, remote) {
+      const remoteSongs = (remote && remote.songs) || {};
+      const remoteTombstones = (remote && remote.tombstones) || {};
+      const names = new Set([...Object.keys(localSongs), ...Object.keys(remoteSongs), ...Object.keys(localTombstones), ...Object.keys(remoteTombstones)]);
+      const songs = {}, tombstones = {};
+      names.forEach(name => {
+        const lu = localSongs[name] ? (localSongs[name].updatedAt || 0) : -1;
+        const ru = remoteSongs[name] ? (remoteSongs[name].updatedAt || 0) : -1;
+        const ld = localTombstones[name] || -1;
+        const rd = remoteTombstones[name] || -1;
+        const latest = Math.max(lu, ru, ld, rd);
+        if (latest < 0) return;
+        if (latest === ld || latest === rd) tombstones[name] = Math.max(ld, rd);
+        else songs[name] = latest === lu ? localSongs[name] : remoteSongs[name];
+      });
+      return { songs, tombstones };
     }
 
     // ---------- Getting songs in: transcription via Basic Pitch ----------
@@ -636,6 +729,7 @@
       'Turn on 📝 Lyrics to type or edit the words below a line, then click a note (click more to grow the group) and drag-select the matching word(s) to link them – the linked word lights up when its note plays.',
       'Click a linked word to unlink it.',
       '🎯 Practice lights the next bar to strike – hit the right one to move on. A clean run through the whole song speeds up the next one.',
+      '☁️ Connect Drive to sync your songs to Google Drive and pick them up on another device – needs the app hosted at a real URL (not opened as a local file).',
     ];
 
     function Bar({ note, index, target, barRef, onStrike }) {
@@ -977,6 +1071,7 @@
           playingTagKey: null,
           gapFlashId: 0,
           gapFlashTimer: null,
+          driveFileId: null,
         };
       }
       const s = S.current;
@@ -988,6 +1083,7 @@
       const [savedSongs, setSavedSongs] = useState(loadSavedSongs());
       const [currentSongName, setCurrentSongName] = useState(null);
       const [tuneValue, setTuneValue] = useState('');
+      const [driveStatus, setDriveStatus] = useState('disconnected'); // disconnected | connecting | syncing | connected | error
       const [lyricMode, setLyricMode] = useState('off'); // one of LYRIC_CYCLE
       const [lyricSel, setLyricSel] = useState(null);
       const [micRunning, setMicRunning] = useState(false);
@@ -1316,9 +1412,9 @@
         }
       });
 
-      // ---------- songs / examples ----------
+      // ---------- songs ----------
       function setCurrentSong(name) { setCurrentSongName(name); }
-      function selectTuneOption(kind, name) { setTuneValue(kind ? kind + ':' + name : ''); }
+      function selectTuneOption(name) { setTuneValue(name || ''); }
 
       function doClear() {
         finishPlayback();
@@ -1330,19 +1426,13 @@
         scrollAfterRender({ type: 'caret' });
       }
       function onTuneChange(e) {
-        const value = e.target.value;
-        setTuneValue(value);
-        if (!value) return;
-        const [kind, name] = [value.slice(0, value.indexOf(':')), value.slice(value.indexOf(':') + 1)];
+        const name = e.target.value;
+        setTuneValue(name);
+        if (!name) return;
         finishPlayback();
         s.lastLiveNote = null;
-        if (kind === 'song') {
-          s.lines = cloneLines(savedSongs[name].lines);
-          setCurrentSong(name);
-        } else {
-          s.lines = EXAMPLES[name].map(l => ({ notes: parseLine(l.n), lyric: l.t || '' }));
-          setCurrentSong(null);
-        }
+        s.lines = cloneLines(savedSongs[name].lines);
+        setCurrentSong(name);
         s.cursor = { line: s.lines.length - 1, pos: s.lines[s.lines.length - 1].notes.length };
         scrollAfterRender({ type: 'caret' });
         e.target.blur();
@@ -1357,11 +1447,14 @@
           const ok = await askConfirm(`"${trimmed}" already exists. Overwrite it?`, { confirmLabel: 'Overwrite', tone: 'amber' });
           if (!ok) return;
         }
-        const next = { ...savedSongs, [trimmed]: { lines: cloneLines(s.lines) } };
+        const next = { ...savedSongs, [trimmed]: { lines: cloneLines(s.lines), updatedAt: Date.now() } };
         setSavedSongs(next);
         persistSavedSongs(next);
+        const tombstones = loadTombstones();
+        if (tombstones[trimmed]) { delete tombstones[trimmed]; persistTombstones(tombstones); }
         setCurrentSong(trimmed);
-        selectTuneOption('song', trimmed);
+        selectTuneOption(trimmed);
+        pushToDrive(next, tombstones);
       }
       async function deleteSong() {
         if (!currentSongName) return;
@@ -1371,6 +1464,8 @@
         delete next[currentSongName];
         setSavedSongs(next);
         persistSavedSongs(next);
+        const tombstones = { ...loadTombstones(), [currentSongName]: Date.now() };
+        persistTombstones(tombstones);
         setCurrentSong(null);
         selectTuneOption(null);
         finishPlayback();
@@ -1378,7 +1473,103 @@
         s.lines = [{ notes: [], lyric: '' }];
         s.cursor = { line: 0, pos: 0 };
         scrollAfterRender({ type: 'caret' });
+        pushToDrive(next, tombstones);
       }
+
+      // ---------- Google Drive sync ----------
+      // A one-time (per browser) Client ID, pasted in by the user - see the connect
+      // prompt below for the Google Cloud Console setup it refers to. Kept out of the
+      // source so the same file works for anyone who hosts their own copy.
+      async function connectDrive(opts = {}) {
+        const silent = !!opts.silent;
+        if (location.protocol === 'file:') {
+          if (!silent) await showAlert("Google Drive sync needs this page served over http:// or https:// (not opened as a local file) - Google's sign-in won't run from a file:// URL. Host it (e.g. GitHub Pages) and open it from there.");
+          return;
+        }
+        let clientId = loadDriveClientId();
+        if (!clientId) {
+          if (silent) return;
+          const entered = await askPrompt(
+            "Paste your Google OAuth Client ID to turn on Drive sync.\n\n" +
+            "One-time setup in Google Cloud Console: create a project, enable the " +
+            "Google Drive API, configure the OAuth consent screen (add yourself as a " +
+            "test user), then create an OAuth Client ID of type 'Web application' with " +
+            "this page's URL listed under Authorized JavaScript origins. Paste that " +
+            "Client ID here.", '');
+          if (!entered || !entered.trim()) return;
+          clientId = entered.trim();
+          saveDriveClientId(clientId);
+        }
+        setDriveStatus('connecting');
+        try {
+          await loadGoogleIdentity();
+          initDriveTokenClient(clientId);
+          await requestDriveToken(silent ? '' : 'consent');
+          saveDriveConnected(true);
+          await syncWithDrive();
+          setDriveStatus('connected');
+        } catch (err) {
+          console.error(err);
+          if (!silent) await showAlert("Couldn't connect to Google Drive: " + err.message);
+          setDriveStatus('disconnected');
+          saveDriveConnected(false);
+        }
+      }
+      // Pulls the remote file (if any), merges it with local state by per-song timestamp,
+      // then writes the merged result back to both localStorage and Drive - so connecting
+      // on a second device both loads what's already synced and reconciles anything this
+      // device saved offline.
+      async function syncWithDrive() {
+        setDriveStatus('syncing');
+        const fileId = await findSyncFileId();
+        const remote = fileId ? await downloadSyncFile(fileId) : null;
+        const localTombstones = loadTombstones();
+        const localSongs = {};
+        Object.entries(savedSongs).forEach(([name, song]) => {
+          localSongs[name] = song.updatedAt ? song : { ...song, updatedAt: Date.now() };
+        });
+        const merged = mergeSyncState(localSongs, localTombstones, remote);
+        setSavedSongs(merged.songs);
+        persistSavedSongs(merged.songs);
+        persistTombstones(merged.tombstones);
+        s.driveFileId = await uploadSyncFile(fileId, merged);
+      }
+      // Fire-and-forget upload after a local save/delete. Local storage is already the
+      // source of truth by the time this runs, so a failure here just leaves Drive stale
+      // until the next successful sync (on reconnect, or the next save) - it never risks
+      // the change that was just made locally.
+      async function pushToDrive(songs, tombstones) {
+        if (!loadDriveConnected()) return;
+        try {
+          setDriveStatus('syncing');
+          const fileId = s.driveFileId || await findSyncFileId();
+          s.driveFileId = await uploadSyncFile(fileId, { songs, tombstones });
+          setDriveStatus('connected');
+        } catch (err) {
+          console.error(err);
+          setDriveStatus('error');
+        }
+      }
+      async function onDriveButtonClick() {
+        if (driveStatus === 'connected' || driveStatus === 'error') {
+          const ok = await askConfirm('Disconnect Google Drive? Your songs stay saved on this device.', { confirmLabel: 'Disconnect', tone: 'amber' });
+          if (!ok) return;
+          saveDriveConnected(false);
+          driveAccessToken = null;
+          s.driveFileId = null;
+          setDriveStatus('disconnected');
+          return;
+        }
+        connectDrive();
+      }
+      // On load, silently re-request an access token (no popup) if this browser was
+      // connected before - covers returning to the app in a fresh tab. If the browser no
+      // longer has a live Google session, this just fails quietly and the button falls
+      // back to its disconnected state for the user to reconnect by hand.
+      useEffect(() => {
+        if (location.protocol === 'file:' || !loadDriveConnected()) return;
+        connectDrive({ silent: true });
+      }, []);
       function loadDetected(detected) {
         finishPlayback();
         s.lastLiveNote = null;
@@ -1509,6 +1700,13 @@
         link: { label: '🔗 Link words', style: BTN_PRIMARY, title: 'Lyrics: linking words to notes. Click to switch to editing text.' },
         edit: { label: '✏️ Edit text', style: BTN_AMBER, title: 'Lyrics: editing text. Click to turn lyrics off.' },
       }[lyricMode];
+      const DRIVE_BTN = {
+        disconnected: { label: '☁️ Connect Drive', style: null, title: 'Sync your songs to Google Drive' },
+        connecting: { label: '☁️ Connecting…', style: null, title: 'Connecting to Google Drive…' },
+        syncing: { label: '🔄 Syncing…', style: BTN_PRIMARY, title: 'Syncing with Google Drive…' },
+        connected: { label: '☁️ Synced', style: BTN_PRIMARY, title: 'Connected to Google Drive. Click to disconnect.' },
+        error: { label: '⚠️ Drive error', style: BTN_DANGER, title: 'The last Drive sync failed. Click to disconnect, then Connect to retry.' },
+      }[driveStatus];
 
       const savedNames = Object.keys(savedSongs).sort((a, b) => a.localeCompare(b));
 
@@ -1522,13 +1720,10 @@
               <select class="font-semibold text-[13px] px-2.5 py-[7px] rounded-lg border border-[#3a3d42] bg-[#35383d] text-[#e8eaed]"
                 disabled=${busy || practicing} value=${tuneValue} onChange=${onTuneChange}>
                 <option value="">Pick a tune…</option>
-                <optgroup label="Built-in">
-                  ${Object.keys(EXAMPLES).map(name => html`<option key=${name} value=${'example:' + name}>${name}</option>`)}
-                </optgroup>
-                ${savedNames.length ? html`<optgroup label="My Songs">
-                  ${savedNames.map(name => html`<option key=${name} value=${'song:' + name}>${name}</option>`)}
-                </optgroup>` : null}
+                ${savedNames.map(name => html`<option key=${name} value=${name}>${name}</option>`)}
               </select>
+              <button class=${cx(BTN, DRIVE_BTN.style)} disabled=${driveStatus === 'connecting' || driveStatus === 'syncing'}
+                data-testid="drive-toggle" title=${DRIVE_BTN.title} onClick=${onDriveButtonClick}>${DRIVE_BTN.label}</button>
               <button class=${cx(BTN, "inline-flex items-center gap-1.5")} title="Help and keyboard shortcuts" aria-label="Help and keyboard shortcuts"
                 onClick=${() => dialogRef.current.showModal()}>
                 Help

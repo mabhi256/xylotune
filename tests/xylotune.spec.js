@@ -64,12 +64,13 @@ test('help dialog: opens from the info button, lists shortcuts, and closes', asy
 test('delete button sits outside the play-buttons row, disabled with no song loaded', async ({ page }) => {
   const del = page.getByRole('button', { name: 'Delete the loaded song' });
   await expect(del).toBeDisabled();
-  await page.selectOption('select', { label: 'Hot Cross Buns' });
-  await expect(del).toBeDisabled(); // examples aren't saved songs
 });
 
 test('pad scrolls internally without growing the page (viewport-fixed layout)', async ({ page }) => {
-  await page.selectOption('select', { label: 'Twinkle Twinkle Little Star' });
+  for (let row = 0; row < 15; row++) {
+    for (let i = 0; i < 8; i++) await page.locator('.bar').nth(i).click();
+    await page.keyboard.press('Enter');
+  }
   const pageScrollHeight = await page.evaluate(() => document.documentElement.scrollHeight);
   const viewportHeight = await page.evaluate(() => window.innerHeight);
   expect(pageScrollHeight).toBeLessThanOrEqual(viewportHeight + 1);
@@ -112,12 +113,23 @@ test('Enter starts a new line', async ({ page }) => {
   expect(after).toBe(before + 1);
 });
 
-test('loading a built-in example populates lines with lyric captions', async ({ page }) => {
-  await page.selectOption('select', { label: 'Twinkle Twinkle Little Star' });
-  await expect(page.locator('.chip')).toHaveCount(42);
-  // lyrics default to "off" (nothing shown) - switch to "on" to see the caption
-  await page.locator('[data-testid="lyrics-toggle"]').click();
-  await expect(page.locator('.lyric').first()).toHaveText('Twinkle, twinkle, little star');
+test('saving and loading a song round-trips its notes and lyric text', async ({ page }) => {
+  await page.locator('.bar').nth(0).click();
+  await page.locator('.bar').nth(1).click();
+  await cycleLyricsTo(page, 'edit');
+  await page.locator('.lyric').first().click();
+  await page.keyboard.type('Hello there');
+
+  await page.getByRole('button', { name: '💾 Save' }).click();
+  const dialog = page.locator('dialog[open]');
+  await dialog.locator('input[type="text"]').fill('Lyric Song');
+  await dialog.getByRole('button', { name: 'OK' }).click();
+
+  await page.getByRole('button', { name: '✕ Clear' }).click();
+  await page.selectOption('select', { label: 'Lyric Song' });
+  await expect(page.locator('.chip')).toHaveCount(2);
+  await cycleLyricsTo(page, 'on');
+  await expect(page.locator('.lyric').first()).toHaveText('Hello there');
 });
 
 test('sound toggle switches bar material', async ({ page }) => {
@@ -204,7 +216,9 @@ test('playing notes live one after another captures the real gap between them, a
 });
 
 test('playback highlights notes in sequence and returns to Play when done', async ({ page }) => {
-  await page.selectOption('select', { label: 'Hot Cross Buns' }); // short song, finishes quickly
+  await page.locator('.bar').nth(0).click();
+  await page.locator('.bar').nth(1).click();
+  await page.locator('.bar').nth(2).click();
   const playBtn = page.getByRole('button', { name: /Play|Pause|Resume/ });
   await playBtn.click();
   await expect(page.locator('.chip.playing')).toHaveCount(1, { timeout: 3000 });
@@ -225,21 +239,27 @@ async function cycleLyricsTo(page, target) {
 }
 
 test('lyric linking: arming a note and drag-selecting a word links them, and it highlights on playback', async ({ page }) => {
-  await page.selectOption('select', { label: 'Twinkle Twinkle Little Star' });
+  await page.locator('.bar').nth(0).click();
+  await page.locator('.bar').nth(1).click();
+  await page.locator('.bar').nth(2).click();
+  await cycleLyricsTo(page, 'edit');
+  const caption = page.locator('.lyric').first();
+  await caption.click();
+  await page.keyboard.type('Hello world today');
+
   const lyricsBtn = await cycleLyricsTo(page, 'link');
   await expect(lyricsBtn).toHaveText('🔗 Link words');
 
   await page.locator('.chip').first().click(); // arm note index 0
   await expect(page.locator('.chip').first()).toHaveClass(/lyric-selecting/);
 
-  const caption = page.locator('.lyric').first();
-  await dragSelectText(page, caption, 0, 7); // "Twinkle"
+  await dragSelectText(page, caption, 0, 5); // "Hello"
   const label = page.locator('[data-tag-note="0"]');
-  await expect(label).toHaveText('Twinkle');
+  await expect(label).toHaveText('Hello');
   await expect(page.locator('.chip').first()).toHaveClass(/lyric-linked/);
   // the flowing caption still shows the full, unmodified sentence - linking only adds the
   // positioned label under the note, it never removes the word from the line
-  await expect(caption).toHaveText('Twinkle, twinkle, little star');
+  await expect(caption).toHaveText('Hello world today');
 
   // clicking the positioned label un-links it
   await label.click();
@@ -247,7 +267,7 @@ test('lyric linking: arming a note and drag-selecting a word links them, and it 
 
   // re-link, then confirm it highlights in sync with playback
   await page.locator('.chip').first().click();
-  await dragSelectText(page, caption, 0, 7);
+  await dragSelectText(page, caption, 0, 5);
   await page.getByRole('button', { name: /Play|Pause|Resume/ }).click();
   await expect(page.locator('[data-tag-note].playing')).toHaveCount(1, { timeout: 3000 });
 });
@@ -267,7 +287,18 @@ test('lyric edit mode: typing into an empty caption lands text, and link mode ne
 });
 
 test('lyric off state hides the caption entirely, even with existing lyric text', async ({ page }) => {
-  await page.selectOption('select', { label: 'Twinkle Twinkle Little Star' });
+  await page.locator('.bar').nth(0).click();
+  await cycleLyricsTo(page, 'edit');
+  await page.locator('.lyric').first().click();
+  await page.keyboard.type('Some words');
+  await page.getByRole('button', { name: '💾 Save' }).click();
+  const dialog = page.locator('dialog[open]');
+  await dialog.locator('input[type="text"]').fill('Lyric Song 2');
+  await dialog.getByRole('button', { name: 'OK' }).click();
+
+  await cycleLyricsTo(page, 'off');
+  await page.getByRole('button', { name: '✕ Clear' }).click();
+  await page.selectOption('select', { label: 'Lyric Song 2' });
   // default state is off - nothing shown, even though this line has lyric text
   await expect(page.locator('.lyric')).toHaveCount(0);
   const lyricsBtn = await cycleLyricsTo(page, 'on');
@@ -280,7 +311,8 @@ test('lyric off state hides the caption entirely, even with existing lyric text'
 });
 
 test('Clear resets the pad to one empty line', async ({ page }) => {
-  await page.selectOption('select', { label: 'Hot Cross Buns' });
+  await page.locator('.bar').nth(0).click();
+  await page.locator('.bar').nth(1).click();
   await expect(page.locator('.chip')).not.toHaveCount(0);
   await page.getByRole('button', { name: '✕ Clear' }).click();
   await expect(page.locator('.chip')).toHaveCount(0);
