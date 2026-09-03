@@ -323,6 +323,51 @@
       margin-top: 3px;
     }
 
+    .lyric-editable {
+      outline: 1px dashed var(--border);
+      outline-offset: 3px;
+      border-radius: 4px;
+      cursor: text;
+      min-height: 14px;
+    }
+
+    .lyric-editable:empty::before {
+      content: 'Click to add lyrics…';
+      opacity: .5;
+      font-style: italic;
+    }
+
+    .lyric-tagged {
+      font-style: normal;
+      font-weight: 700;
+      color: var(--text);
+      border-bottom: 2px solid var(--accent);
+    }
+
+    body.lyric-mode .lyric-tagged {
+      cursor: pointer;
+    }
+
+    .lyric-tagged.playing {
+      background: var(--accent);
+      color: #fff;
+      border-radius: 3px;
+      padding: 0 2px;
+    }
+
+    .chip.lyric-linked {
+      border-bottom: 3px solid var(--accent);
+    }
+
+    .chip.lyric-selecting {
+      outline: 2px dashed #fff;
+      outline-offset: 1px;
+    }
+
+    body.lyric-mode .pnotes {
+      cursor: default;
+    }
+
     .caret {
       display: inline-block;
       width: 2px;
@@ -500,6 +545,7 @@
             <button id="playBtn" class="primary" disabled>▶ Play</button>
             <button id="restartBtn" disabled title="Restart from the beginning" aria-label="Restart">⏮</button>
             <button id="clearBtn">✕ Clear</button>
+            <button id="lyricModeBtn" title="Tag notes with lyrics">📝 Lyrics</button>
             <div class="tempo">
               <span id="bpmLabel">Speed 100%</span>
               <input type="range" id="bpmSlider" min="50" max="200" value="100" step="10">
@@ -531,7 +577,10 @@
     <div class="directions">The dots after each note are the gap before the next one (hover for the exact
       time). Click past the dots to add one, click a dot to cut the gap back to that point. Play bars one
       after another at the end of the pad and your real timing is recorded automatically, pause more than a
-      beat and a new line starts on its own.</div>
+      beat and a new line starts on its own. Turn on 📝 Lyrics to type or edit the words below a line, then
+      click a note (click more to grow the group) and drag-select the matching word(s) to link them - the
+      linked word lights up when its note plays. Click a linked word to unlink it, <kbd>Esc</kbd> to drop an
+      armed note selection.</div>
   </footer>
 
   <script>
@@ -761,6 +810,7 @@
         dot.dataset.step = d + 1; // clicking here sets the gap to this many steps
         dot.addEventListener('pointerdown', (e) => {
           e.stopPropagation();
+          if (lyricMode) return;
           resetPlayer();
           lastLiveNote = null;
           n.sec = (d + 1) * REST_UNIT_SEC;
@@ -782,11 +832,177 @@
       wrap.addEventListener('pointerdown', (e) => {
         if (e.target !== wrap) return; // a specific dot already handled this click
         e.stopPropagation();
+        if (lyricMode) return;
         resetPlayer();
         lastLiveNote = null;
         n.sec += REST_UNIT_SEC;
         renderPad();
       });
+      return wrap;
+    }
+
+    // ---------- Lyric annotations: link a note or a run of notes to a stretch of the line's words ----------
+    // A link is anchored on its first note: note.lyricStart/lyricEnd are character offsets into
+    // the line's own `lyric` text, note.lyricSpan is how many consecutive notes (this one
+    // included) it covers. Anchoring on the note object itself (not an index) means the link
+    // rides along automatically when notes before it are inserted, deleted, or reordered.
+    let lyricMode = false;
+    let lyricSel = null; // {line, start, end}: notes[start..end] armed, waiting for a word selection
+
+    // Reads back every link on a line, in text order, by scanning for anchor notes.
+    // Nothing needs to stay in sync separately - a link disappears on its own the moment
+    // its anchor note is deleted.
+    function collectLineTags(line) {
+      const tags = [];
+      line.notes.forEach((n, ni) => {
+        if (n.lyricStart !== undefined) tags.push({ start: n.lyricStart, end: n.lyricEnd, noteIdx: ni, noteSpan: n.lyricSpan || 1 });
+      });
+      tags.sort((a, b) => a.start - b.start);
+      return tags;
+    }
+    function stripLyricTags(notesArr) {
+      notesArr.forEach(n => { delete n.lyricStart; delete n.lyricEnd; delete n.lyricSpan; });
+    }
+    // Insertion/removal at `pos` (pre-mutation index) can only corrupt a link whose span
+    // strictly contains it - before its anchor the link is unaffected (rides with the anchor
+    // object), and removing the anchor itself already self-heals via collectLineTags.
+    function invalidateTagsAt(line, pos) {
+      collectLineTags(line).forEach(t => {
+        if (pos > t.noteIdx && pos <= t.noteIdx + t.noteSpan - 1) stripLyricTags([line.notes[t.noteIdx]]);
+      });
+    }
+    // A new link overwrites any existing link that overlaps it on either axis - the note
+    // range or the text range - so a partial overwrite can't leave a stale, half-matching link.
+    function clearTagOverlap(line, noteStart, noteEnd, charStart, charEnd) {
+      collectLineTags(line).forEach(t => {
+        const noteOverlap = t.noteIdx <= noteEnd && t.noteIdx + t.noteSpan - 1 >= noteStart;
+        const charOverlap = t.start < charEnd && t.end > charStart;
+        if (noteOverlap || charOverlap) stripLyricTags([line.notes[t.noteIdx]]);
+      });
+    }
+    function linkLyricSelection(li, noteStart, noteEnd, charStart, charEnd) {
+      const line = lines[li];
+      clearTagOverlap(line, noteStart, noteEnd, charStart, charEnd);
+      const anchor = line.notes[noteStart];
+      anchor.lyricStart = charStart;
+      anchor.lyricEnd = charEnd;
+      anchor.lyricSpan = noteEnd - noteStart + 1;
+    }
+    function unlinkTag(li, noteIdx) {
+      stripLyricTags([lines[li].notes[noteIdx]]);
+      renderPad();
+    }
+    // Flat character offset of (node, offset) within root's text, for turning a DOM Range
+    // (which addresses a specific text node) into a plain index into line.lyric.
+    function textOffset(root, node, offset) {
+      let total = 0;
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      let cur;
+      while ((cur = walker.nextNode())) {
+        if (cur === node) return total + offset;
+        total += cur.textContent.length;
+      }
+      return total;
+    }
+    // A collapsed click inside an existing linked word unlinks it; a real drag/double-click
+    // selection, with a note range already armed, links that selection to the armed notes.
+    function handleLyricMouseUp(wrap, li) {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      const range = sel.getRangeAt(0);
+      if (!wrap.contains(range.commonAncestorContainer)) return;
+      if (sel.isCollapsed) {
+        const container = range.startContainer;
+        const el = container.nodeType === 3 ? container.parentElement : container;
+        const tagSpan = el && el.closest && el.closest('.lyric-tagged');
+        if (tagSpan) unlinkTag(li, +tagSpan.dataset.tagNote);
+        return;
+      }
+      if (!lyricSel || lyricSel.line !== li) return;
+      const a = textOffset(wrap, range.startContainer, range.startOffset);
+      const b = textOffset(wrap, range.endContainer, range.endOffset);
+      const charStart = Math.min(a, b), charEnd = Math.max(a, b);
+      if (charEnd <= charStart) return;
+      linkLyricSelection(li, lyricSel.start, lyricSel.end, charStart, charEnd);
+      sel.removeAllRanges();
+      lyricSel = null;
+      renderPad();
+    }
+    const lyricModeBtn = document.getElementById('lyricModeBtn');
+    lyricModeBtn.addEventListener('click', () => {
+      lyricModeBtn.blur();
+      lyricMode = !lyricMode;
+      lyricSel = null;
+      lyricModeBtn.classList.toggle('primary', lyricMode);
+      document.body.classList.toggle('lyric-mode', lyricMode);
+      renderPad();
+    });
+
+    // Builds one note chip, wired for either cursor placement (normal mode) or
+    // lyric-range arming (lyric mode) depending on the current mode.
+    function buildChip(n, li, ni, tags) {
+      const chip = document.createElement('div');
+      chip.className = 'chip';
+      chip.style.background = NOTES[n.i].color;
+      chip.textContent = n.i + 1;
+      chip.dataset.pos = li + '-' + ni;
+      if (tags.some(t => ni >= t.noteIdx && ni <= t.noteIdx + t.noteSpan - 1)) chip.classList.add('lyric-linked');
+      if (lyricMode) {
+        const selected = lyricSel && lyricSel.line === li && ni >= lyricSel.start && ni <= lyricSel.end;
+        chip.classList.toggle('lyric-selecting', !!selected);
+        chip.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          if (!lyricSel || lyricSel.line !== li) lyricSel = { line: li, start: ni, end: ni };
+          else lyricSel = { line: li, start: Math.min(lyricSel.start, ni), end: Math.max(lyricSel.end, ni) };
+          renderPad();
+        });
+      } else {
+        chip.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          cursor = { line: li, pos: ni + 1 };
+          renderPad();
+        });
+      }
+      return chip;
+    }
+
+    // Renders a line's lyric caption: plain italic text outside lyric mode (unchanged from
+    // before), or an editable, taggable surface while lyric mode is on. Linked stretches are
+    // always shown underlined, even outside lyric mode, so the mapping stays visible at a glance.
+    function renderLyricCaption(line, li, tags) {
+      const text = line.lyric || '';
+      if (!text && !lyricMode) return null;
+      const wrap = document.createElement('div');
+      wrap.className = 'lyric';
+      if (lyricMode) {
+        wrap.contentEditable = 'true';
+        wrap.classList.add('lyric-editable');
+      }
+      let pos = 0;
+      tags.forEach(t => {
+        if (t.start > pos) wrap.appendChild(document.createTextNode(text.slice(pos, t.start)));
+        const span = document.createElement('span');
+        span.className = 'lyric-tagged';
+        span.dataset.tagLine = li;
+        span.dataset.tagNote = t.noteIdx;
+        span.textContent = text.slice(t.start, t.end);
+        wrap.appendChild(span);
+        pos = t.end;
+      });
+      if (pos < text.length) wrap.appendChild(document.createTextNode(text.slice(pos)));
+      if (lyricMode) {
+        // the row's own pointerdown handler would otherwise clear the armed note selection
+        // and rebuild the pad before the browser can focus/select inside this element
+        wrap.addEventListener('pointerdown', (e) => e.stopPropagation());
+        wrap.addEventListener('mouseup', () => handleLyricMouseUp(wrap, li));
+        wrap.addEventListener('input', () => {
+          // free-typed edits can't be safely re-mapped onto the old offsets, so they void
+          // this line's links rather than risk a link silently pointing at the wrong word
+          line.lyric = wrap.textContent;
+          stripLyricTags(line.notes);
+        });
+        wrap.addEventListener('blur', renderPad); // normalizes the DOM back into tag spans
+      }
       return wrap;
     }
 
@@ -805,24 +1021,13 @@
           caretEl.className = 'caret';
           notesRow.appendChild(caretEl);
         };
+        const tags = collectLineTags(line);
         line.notes.forEach((n, ni) => {
-          if (li === cursor.line && ni === cursor.pos) putCaret();
-          if (!n.rest) {
-            const chip = document.createElement('div');
-            chip.className = 'chip';
-            chip.style.background = NOTES[n.i].color;
-            chip.textContent = n.i + 1;
-            chip.dataset.pos = li + '-' + ni;
-            chip.addEventListener('pointerdown', (e) => {
-              e.stopPropagation();
-              cursor = { line: li, pos: ni + 1 };
-              renderPad();
-            });
-            notesRow.appendChild(chip);
-          }
+          if (li === cursor.line && ni === cursor.pos && !lyricMode) putCaret();
+          if (!n.rest) notesRow.appendChild(buildChip(n, li, ni, tags));
           notesRow.appendChild(gapDots(n, li, ni));
         });
-        if (li === cursor.line && cursor.pos >= line.notes.length) putCaret();
+        if (li === cursor.line && cursor.pos >= line.notes.length && !lyricMode) putCaret();
         if (empty) {
           const p = document.createElement('span');
           p.className = 'placeholder';
@@ -830,16 +1035,13 @@
           notesRow.appendChild(p);
         }
         row.addEventListener('pointerdown', () => {
+          if (lyricMode) { lyricSel = null; renderPad(); return; }
           cursor = { line: li, pos: line.notes.length };
           renderPad();
         });
         row.appendChild(notesRow);
-        if (line.lyric) {
-          const ly = document.createElement('div');
-          ly.className = 'lyric';
-          ly.textContent = line.lyric;
-          row.appendChild(ly);
-        }
+        const caption = renderLyricCaption(line, li, tags);
+        if (caption) row.appendChild(caption);
         padEl.appendChild(row);
       });
       updatePlayBtn();
@@ -862,6 +1064,7 @@
         }
       }
       const note = { i, sec: QUARTER_SEC };
+      invalidateTagsAt(lines[cursor.line], cursor.pos);
       lines[cursor.line].notes.splice(cursor.pos, 0, note);
       cursor.pos++;
       lastLiveNote = atEnd ? { note, time: now } : null;
@@ -871,7 +1074,9 @@
       // split the current line at the caret, like Enter in a text editor
       resetPlayer();
       lastLiveNote = null;
+      invalidateTagsAt(lines[cursor.line], cursor.pos); // splitting mid-link would corrupt it
       const tail = lines[cursor.line].notes.splice(cursor.pos);
+      stripLyricTags(tail); // the new line has no lyric text yet for these to point into
       lines.splice(cursor.line + 1, 0, { notes: tail, lyric: '' });
       cursor = { line: cursor.line + 1, pos: 0 };
       renderPad();
@@ -888,12 +1093,14 @@
         if (dotCount(n) > 1) {
           n.sec -= REST_UNIT_SEC;
         } else {
+          invalidateTagsAt(line, cursor.pos - 1);
           line.notes.splice(cursor.pos - 1, 1);
           cursor.pos--;
         }
       } else if (cursor.line > 0) {
         const prev = lines[cursor.line - 1];
         cursor = { line: cursor.line - 1, pos: prev.notes.length };
+        stripLyricTags(line.notes); // this line's lyric text (and its links) is being dropped
         prev.notes = prev.notes.concat(line.notes);
         lines.splice(cursor.line + 1, 1);
       }
@@ -908,9 +1115,11 @@
         if (dotCount(n) > 1) {
           n.sec -= REST_UNIT_SEC;
         } else {
+          invalidateTagsAt(line, cursor.pos);
           line.notes.splice(cursor.pos, 1);
         }
       } else if (cursor.line < lines.length - 1) {
+        stripLyricTags(lines[cursor.line + 1].notes); // its lyric text is being dropped, not merged
         line.notes = line.notes.concat(lines[cursor.line + 1].notes);
         lines.splice(cursor.line + 1, 1);
       }
@@ -922,8 +1131,10 @@
       lastLiveNote = null;
       const line = lines[cursor.line];
       if (cursor.pos < line.notes.length) {
+        invalidateTagsAt(line, cursor.pos);
         line.notes.splice(cursor.pos, 1);
       } else if (cursor.line < lines.length - 1) {
+        stripLyricTags(lines[cursor.line + 1].notes);
         line.notes = line.notes.concat(lines[cursor.line + 1].notes);
         lines.splice(cursor.line + 1, 1);
       }
@@ -970,9 +1181,14 @@
     });
 
     document.addEventListener('keydown', (e) => {
-      const tag = e.target.tagName;
-      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
+      const tagName = e.target.tagName;
+      if (tagName === 'INPUT' || tagName === 'SELECT' || tagName === 'TEXTAREA' || tagName === 'BUTTON') return;
+      if (e.target.isContentEditable) return; // typing into the lyric caption - browser handles all keys
       if (e.target.classList && e.target.classList.contains('bar') && (e.key === 'Enter' || e.key === ' ')) return; // bar handles its own strike
+      if (lyricMode) {
+        if (e.key === 'Escape' && lyricSel) { e.preventDefault(); lyricSel = null; renderPad(); }
+        return;
+      }
       if (e.key >= '1' && e.key <= '8') { if (!e.repeat) strike(+e.key - 1); }
       else if (e.key === 'Enter') { if (!e.repeat) newLine(); }
       else if (e.key === 'Backspace') { e.preventDefault(); backspace(); }
@@ -1013,6 +1229,11 @@
       clearPlayingHighlight();
       const el = padEl.querySelector(`[data-pos="${ev.li}-${ev.ni}"]`);
       if (el) { el.classList.add('playing'); el.scrollIntoView({ block: 'nearest' }); }
+      const tag = collectLineTags(lines[ev.li]).find(t => ev.ni >= t.noteIdx && ev.ni <= t.noteIdx + t.noteSpan - 1);
+      if (tag) {
+        const tagEl = padEl.querySelector(`.lyric-tagged[data-tag-line="${ev.li}"][data-tag-note="${tag.noteIdx}"]`);
+        if (tagEl) tagEl.classList.add('playing');
+      }
       player.idx++;
       player.timer = setTimeout(step, durMs);
     }
