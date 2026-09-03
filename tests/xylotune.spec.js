@@ -125,6 +125,84 @@ test('sound toggle switches bar material', async ({ page }) => {
   await expect(page.locator('body')).toHaveAttribute('data-material', 'wood');
 });
 
+test('practice mode: lights the first bar, holds on a wrong strike, advances on the right one, and speeds up after a clean pass', async ({ page }) => {
+  const practiceBtn = page.locator('[data-testid="practice-toggle"]');
+  await expect(practiceBtn).toBeDisabled(); // nothing to practice yet
+
+  await page.locator('.bar').nth(0).click(); // note 0 (C)
+  await page.locator('.bar').nth(1).click(); // note 1 (D)
+  await expect(page.locator('.chip')).toHaveCount(2);
+
+  await practiceBtn.click();
+  await expect(practiceBtn).toHaveText('⏹ Stop practice');
+  await expect(page.locator('.bar.target')).toHaveCount(1);
+  await expect(page.locator('.bar').nth(0)).toHaveClass(/target/);
+  await expect(page.locator('[data-testid="practice-status"]')).toHaveText('Note 1 of 2 · Speed 100%');
+
+  // editing controls are hidden/disabled while practicing
+  await expect(page.getByRole('button', { name: '✕ Clear' })).toBeDisabled();
+
+  // the wrong bar plays but doesn't advance the target
+  await page.locator('.bar').nth(1).click();
+  await expect(page.locator('[data-testid="practice-status"]')).toHaveText('Note 1 of 2 · Speed 100%');
+  await expect(page.locator('.bar').nth(0)).toHaveClass(/target/);
+
+  // the lit bar advances to the next note
+  await page.locator('.bar').nth(0).click();
+  await expect(page.locator('[data-testid="practice-status"]')).toHaveText('Note 2 of 2 · Speed 100%');
+  await expect(page.locator('.bar').nth(1)).toHaveClass(/target/);
+
+  // this pass had a mistake, so finishing it wraps back to the start at the same speed
+  await page.locator('.bar').nth(1).click();
+  await expect(page.locator('[data-testid="practice-status"]')).toHaveText('Note 1 of 2 · Speed 100%');
+  await expect(page.locator('.bar').nth(0)).toHaveClass(/target/);
+
+  // a fully clean pass speeds the next one up
+  await page.locator('.bar').nth(0).click();
+  await page.locator('.bar').nth(1).click();
+  await expect(page.locator('[data-testid="practice-status"]')).toHaveText('Note 1 of 2 · Speed 115%');
+
+  await practiceBtn.click();
+  await expect(practiceBtn).toHaveText('🎯 Practice');
+  await expect(page.locator('.bar.target')).toHaveCount(0);
+  await expect(page.locator('[data-testid="practice-status"]')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '✕ Clear' })).toBeEnabled();
+});
+
+test('practice mode: Escape stops practice, same as the button', async ({ page }) => {
+  await page.locator('.bar').nth(0).click();
+  await page.locator('[data-testid="practice-toggle"]').click();
+  await expect(page.locator('.bar.target')).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-testid="practice-toggle"]')).toHaveText('🎯 Practice');
+  await expect(page.locator('.bar.target')).toHaveCount(0);
+});
+
+// Regression: adding/removing a dot used to nudge the note's raw sec by +/-0.1 from
+// whatever value was already there, so a note with off-grid recorded timing (e.g. 0.37s)
+// stayed off-grid forever - the dot count shown always rounds, so this drift was invisible
+// in the UI and only showed up as the pad sounding different from what the dots implied.
+// Dot edits must instead snap to the exact value their new dot count implies.
+test('adding/removing a dot snaps to the grid instead of nudging raw recorded timing (regression)', async ({ page }) => {
+  await page.locator('.bar').nth(0).click(); // cursor now sits right after this note
+  await page.evaluate(() => window.__xyloTest.pokeSec(0, 0, 0.37)); // off-grid, as if live-recorded
+
+  await page.keyboard.press('Space'); // "add a dot": 0.37s rounds to 4 dots shown, so this should land on 5 dots = 0.5s exactly
+  expect(await page.evaluate(() => window.__xyloTest.getSec(0, 0))).toBeCloseTo(0.5, 6);
+
+  await page.keyboard.press('Backspace'); // shrink back a dot: should land on exactly 0.4s, not 0.4-ish
+  expect(await page.evaluate(() => window.__xyloTest.getSec(0, 0))).toBeCloseTo(0.4, 6);
+});
+
+test('playing notes live one after another captures the real gap between them, and a long pause starts a new line', async ({ page }) => {
+  await page.locator('.bar').nth(0).click();
+  await page.waitForTimeout(1700); // past PHRASE_BREAK_SEC (1.2s), with generous buffer for timer jitter under load
+  const before = await page.evaluate(() => document.querySelectorAll('#root .flex.flex-wrap.gap-\\[5px\\]').length);
+  await page.locator('.bar').nth(1).click();
+  const after = await page.evaluate(() => document.querySelectorAll('#root .flex.flex-wrap.gap-\\[5px\\]').length);
+  expect(after).toBe(before + 1);
+});
+
 test('playback highlights notes in sequence and returns to Play when done', async ({ page }) => {
   await page.selectOption('select', { label: 'Hot Cross Buns' }); // short song, finishes quickly
   const playBtn = page.getByRole('button', { name: /Play|Pause|Resume/ });
