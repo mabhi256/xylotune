@@ -5,585 +5,70 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tune to Xylophone</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.js"></script>
   <style>
     :root {
-      --bg: #212326;
-      --panel: #2a2d31;
-      --border: #3a3d42;
-      --text: #e8eaed;
-      --muted: #9aa0a6;
-      --accent: #12897e;
-      /* app chrome accent (play button, active toggle, slider) - stays put across bar materials */
-      --c1: #d63c30;
-      /* C  red */
-      --c2: #ee9421;
-      /* D  orange */
-      --c3: #e6bd1c;
-      /* E  gold */
-      --c4: #4ba54f;
-      /* F  green */
-      --c5: #12897e;
-      /* G  teal */
-      --c6: #189ad3;
-      /* A  blue */
-      --c7: #6a3fae;
-      /* B  purple */
-      --c8: #d84941;
-      /* C' red */
+      --c1: #d63c30; /* C  red */
+      --c2: #ee9421; /* D  orange */
+      --c3: #e6bd1c; /* E  gold */
+      --c4: #4ba54f; /* F  green */
+      --c5: #12897e; /* G  teal */
+      --c6: #189ad3; /* A  blue */
+      --c7: #6a3fae; /* B  purple */
+      --c8: #d84941; /* C' red */
     }
 
     /* Wood material: swaps the rainbow bar/chip palette for an oak-to-walnut gradient. */
     body[data-material="wood"] {
       --c1: hsl(32, 42%, 62%);
-      /* C  light oak */
       --c2: hsl(31, 42%, 59%);
-      /* D */
       --c3: hsl(30, 43%, 55%);
-      /* E */
       --c4: hsl(28, 43%, 52%);
-      /* F */
       --c5: hsl(27, 44%, 48%);
-      /* G */
       --c6: hsl(25, 45%, 45%);
-      /* A */
       --c7: hsl(24, 46%, 41%);
-      /* B */
       --c8: hsl(22, 47%, 38%);
-      /* C' walnut */
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      min-height: 100vh;
-      background: var(--bg);
-      font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
-      color: var(--text);
-      padding: 18px 16px 90px;
-    }
-
-    .wrap {
-      max-width: 1120px;
-      margin: 0 auto;
-    }
-
-    header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      flex-wrap: wrap;
-      margin-bottom: 14px;
-    }
-
-    h1 {
-      font-size: 18px;
-      font-weight: 700;
-      margin: 0;
-      letter-spacing: .2px;
-    }
-
-    .controls {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-
-    button {
-      font: 600 13px inherit;
-      font-family: inherit;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 7px 13px;
-      cursor: pointer;
-      color: var(--text);
-      background: #35383d;
-      transition: background .1s ease;
-    }
-
-    button:hover {
-      background: #3f434a;
-    }
-
-    button:active {
-      transform: translateY(1px);
-    }
-
-    button:disabled {
-      opacity: .45;
-      cursor: not-allowed;
-    }
-
-    button.primary {
-      background: var(--accent);
-      border-color: transparent;
-    }
-
-    button.primary:hover {
-      background: #0f9c8f;
-    }
-
-    button.danger {
-      background: #a83a32;
-      border-color: transparent;
-    }
-
-    button.danger:hover {
-      background: #c2443a;
-    }
-
-    select {
-      font: 600 13px inherit;
-      font-family: inherit;
-      padding: 7px 10px;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-      background: #35383d;
-      color: var(--text);
-    }
-
-    .sound-toggle {
-      display: flex;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      overflow: hidden;
-    }
-
-    .toggle-btn {
-      font: 600 13px inherit;
-      font-family: inherit;
-      border: none;
-      padding: 7px 12px;
-      cursor: pointer;
-      color: var(--muted);
-      background: #35383d;
-      transition: background .1s ease, color .1s ease;
-    }
-
-    .toggle-btn:not(:last-child) {
-      border-right: 1px solid var(--border);
-    }
-
-    .toggle-btn:hover {
-      background: #3f434a;
-    }
-
-    .toggle-btn.active {
-      background: var(--accent);
-      color: #fff;
-    }
-
-    /* Two columns: xylophone left, pad right */
-    .main {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-      align-items: start;
-    }
-
-    @media (max-width:880px) {
-      .main {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    /* Music pad */
-    .pad-panel {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 12px;
-    }
-
-    .pad-header {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-bottom: 10px;
-    }
-
-    .toolbar {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .tempo {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 13px;
-    }
-
-    .tempo input[type=range] {
-      width: 90px;
-      accent-color: var(--accent);
-    }
-
-    #bpmLabel {
-      font-weight: 600;
-      min-width: 50px;
-    }
-
-    .pad {
-      min-height: 420px;
-      max-height: 520px;
-      overflow-y: auto;
-      padding: 2px 4px;
-    }
-
-    .pad-actions {
-      display: flex;
-      justify-content: flex-end;
-      margin-top: 10px;
-    }
-
-    .pline {
-      padding: 5px 0 6px;
-      border-bottom: 1px solid #33363b;
-    }
-
-    .pline:last-child {
-      border-bottom: none;
-    }
-
-    .pnotes {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 5px;
-      align-items: center;
-      min-height: 26px;
-      cursor: text;
-    }
-
-    .chip {
-      width: 24px;
-      height: 24px;
-      border-radius: 6px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 12.5px;
-      font-weight: 700;
-      color: #fff;
-      text-shadow: 0 1px 2px rgba(0, 0, 0, .35);
-      flex: 0 0 auto;
-      cursor: pointer;
-    }
-
-    .chip.playing {
-      outline: 2px solid #fff;
-      transform: scale(1.12);
-    }
-
-    .gap {
-      display: inline-flex;
-      align-items: center;
-      color: #6f7479;
-      font-size: 15px;
-      font-weight: 700;
-      letter-spacing: 1px;
-      cursor: pointer;
-      padding: 2px 6px 2px 2px;
-      border-radius: 5px;
-    }
-
-    .gap:hover {
-      background: #35383d;
-      color: var(--muted);
-    }
-
-    .gaptip {
-      position: fixed;
-      transform: translate(-50%, calc(-100% - 8px));
-      background: #111214;
-      color: var(--text);
-      font: 600 11px inherit;
-      font-family: inherit;
-      padding: 2px 6px;
-      border-radius: 4px;
-      border: 1px solid var(--border);
-      pointer-events: none;
-      white-space: nowrap;
-      z-index: 50;
-      display: none;
-    }
-
-    .lyric {
-      font-size: 11.5px;
-      color: #84898e;
-      font-style: italic;
-      margin-top: 3px;
-    }
-
-    .lyric-editable {
-      outline: 1px dashed var(--border);
-      outline-offset: 3px;
-      border-radius: 4px;
-      cursor: text;
-      min-height: 14px;
-    }
-
-    .lyric-editable:empty::before {
-      content: 'Click to add lyrics…';
-      opacity: .5;
-      font-style: italic;
-    }
-
-    .lyric-tagged {
-      font-style: normal;
-      font-weight: 700;
-      color: var(--text);
-      border-bottom: 2px solid var(--accent);
-    }
-
-    body.lyric-mode .lyric-tagged {
-      cursor: pointer;
-    }
-
-    .lyric-tagged.playing {
-      background: var(--accent);
-      color: #fff;
-      border-radius: 3px;
-      padding: 0 2px;
-    }
-
-    .chip.lyric-linked {
-      border-bottom: 3px solid var(--accent);
-    }
-
-    .chip.lyric-selecting {
-      outline: 2px dashed #fff;
-      outline-offset: 1px;
-    }
-
-    body.lyric-mode .pnotes {
-      cursor: default;
-    }
-
-    .caret {
-      display: inline-block;
-      width: 2px;
-      height: 18px;
-      background: var(--text);
-      animation: blink 1.1s steps(1) infinite;
-    }
-
-    /* Hug the dot before it - backspace consumes that dot, so the caret
-       should read as sitting right against it, not floating past it. */
-    .gap+.caret {
-      margin-left: -10px;
-    }
-
-    @keyframes blink {
-      50% {
-        opacity: 0;
-      }
-    }
-
-    .placeholder {
-      color: #6f7479;
-      font-size: 12.5px;
-      font-style: italic;
-    }
-
-    .legend-bar {
-      position: fixed;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: var(--panel);
-      border-top: 1px solid var(--border);
-      padding: 10px 16px;
-      font-size: 12.5px;
-      color: var(--muted);
-      line-height: 1.7;
-      text-align: center;
-      box-shadow: 0 -6px 16px rgba(0, 0, 0, .35);
-      z-index: 40;
-    }
-
-    .legend-bar .directions {
-      margin-top: 4px;
-      font-style: italic;
-      color: var(--muted);
-    }
-
-    kbd {
-      font: 700 11px inherit;
-      font-family: inherit;
-      background: #43474d;
-      border: 1px solid #52565d;
-      border-radius: 4px;
-      padding: 2px 6px;
-      color: var(--text);
-    }
-
-    /* Xylophone */
-    .xylo-panel {
-      order: -1;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      gap: 20px;
-      min-height: 520px;
-    }
-
-    .xylo {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: clamp(6px, 1.3vw, 13px);
-    }
-
-    .key {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .bar {
-      width: clamp(38px, 5.6vw, 54px);
-      border-radius: 10px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: Georgia, "Times New Roman", serif;
-      font-weight: 700;
-      font-size: 26px;
-      color: #17181a;
-      box-shadow: 0 3px 8px rgba(0, 0, 0, .4);
-      transition: filter .07s ease, transform .07s ease;
-      user-select: none;
-      -webkit-tap-highlight-color: transparent;
-      touch-action: manipulation;
-    }
-
-    .bar:hover {
-      filter: brightness(1.1);
     }
 
     body[data-material="wood"] .bar {
       background-image:
         repeating-linear-gradient(180deg,
-          rgba(0, 0, 0, .08) 0px,
-          rgba(0, 0, 0, .08) 1px,
-          transparent 1px,
-          transparent 5px,
-          rgba(255, 255, 255, .05) 5px,
-          rgba(255, 255, 255, .05) 6px,
-          transparent 6px,
-          transparent 13px);
+          rgba(0, 0, 0, .08) 0px, rgba(0, 0, 0, .08) 1px,
+          transparent 1px, transparent 5px,
+          rgba(255, 255, 255, .05) 5px, rgba(255, 255, 255, .05) 6px,
+          transparent 6px, transparent 13px);
       box-shadow: 0 3px 8px rgba(0, 0, 0, .4), inset 0 1px 0 rgba(255, 255, 255, .15);
     }
 
-    .bar.active {
-      filter: brightness(1.35);
-      transform: scale(.97);
-    }
+    .bar.active { filter: brightness(1.35); transform: scale(.97); }
+    .chip.playing { outline: 2px solid #fff; transform: scale(1.12); }
+    .chip.lyric-linked { border-bottom: 3px solid var(--c5); }
+    .chip.lyric-selecting { outline: 2px dashed #fff; outline-offset: 1px; }
+    .lyric-tagged { border-bottom: 2px solid var(--c5); }
+    .lyric-tagged.playing { background: var(--c5); color: #fff; border-radius: 3px; padding: 0 2px; }
+    .lyric-editable:empty::before { content: 'Click to add lyrics…'; opacity: .5; font-style: italic; }
 
-    .bar:focus-visible {
-      outline: 2px solid #fff;
-      outline-offset: 3px;
-    }
-
-    .num {
-      font-size: 16px;
-      color: #cfd2d6;
-      font-weight: 600;
-    }
+    .caret { display: inline-block; width: 2px; height: 18px; background: #e8eaed; animation: blink 1.1s steps(1) infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
 
     @media (prefers-reduced-motion: reduce) {
-      * {
-        transition: none !important;
-        animation: none !important;
-      }
-
-      .bar.active {
-        transform: none;
-      }
-
-      .chip.playing {
-        transform: none;
-      }
-
-      .caret {
-        opacity: 1;
-      }
+      * { transition: none !important; animation: none !important; }
+      .bar.active, .chip.playing { transform: none; }
+      .caret { opacity: 1; }
     }
   </style>
 </head>
 
-<body>
-  <div class="wrap">
-    <header>
-      <h1>Tune to Xylophone</h1>
-      <div class="controls">
-        <button id="micBtn">🎤 Hum it</button>
-        <button id="fileBtn">📁 Upload</button>
-        <input id="fileInput" type="file" accept="audio/*" style="display:none">
-        <select id="exampleSelect">
-          <option value="">Pick a tune…</option>
-        </select>
-      </div>
-    </header>
-
-    <div class="main">
-      <section class="pad-panel">
-        <div class="pad-header">
-          <div class="toolbar">
-            <button id="playBtn" class="primary" disabled>▶ Play</button>
-            <button id="restartBtn" disabled title="Restart from the beginning" aria-label="Restart">⏮</button>
-            <button id="clearBtn">✕ Clear</button>
-            <button id="lyricModeBtn" title="Tag notes with lyrics">📝 Lyrics</button>
-            <div class="tempo">
-              <span id="bpmLabel">Speed 100%</span>
-              <input type="range" id="bpmSlider" min="50" max="200" value="100" step="10">
-            </div>
-          </div>
-          <button id="deleteSongBtn" class="danger" disabled title="Delete the loaded song">🗑 Delete</button>
-        </div>
-        <div class="pad" id="pad"></div>
-        <div class="pad-actions">
-          <button id="saveSongBtn">💾 Save</button>
-        </div>
-      </section>
-
-      <section class="xylo-panel">
-        <div class="xylo" id="xylo"></div>
-        <div class="sound-toggle" id="soundToggle" role="group" aria-label="Bar material">
-          <button type="button" class="toggle-btn active" data-sound="metal">🔔 Metal</button>
-          <button type="button" class="toggle-btn" data-sound="wood">🪵 Wood</button>
-        </div>
-      </section>
-    </div>
-  </div>
-
-  <footer class="legend-bar">
-    <kbd>1</kbd>–<kbd>8</kbd> write a note &nbsp;·&nbsp; <kbd>Enter</kbd> new line &nbsp;·&nbsp;
-    <kbd>⌫</kbd> delete a dot, or the note once its dots run out &nbsp;·&nbsp;
-    <kbd>Space</kbd>/<kbd>.</kbd> add a dot &nbsp;·&nbsp;
-    <kbd>⇧</kbd><kbd>Del</kbd> delete a note and its dots &nbsp;·&nbsp; arrow keys or click to move the cursor
-    <div class="directions">The dots after each note are the gap before the next one (hover for the exact
-      time). Click past the dots to add one, click a dot to cut the gap back to that point. Play bars one
-      after another at the end of the pad and your real timing is recorded automatically, pause more than a
-      beat and a new line starts on its own. Turn on 📝 Lyrics to type or edit the words below a line, then
-      click a note (click more to grow the group) and drag-select the matching word(s) to link them - the
-      linked word lights up when its note plays. Click a linked word to unlink it, <kbd>Esc</kbd> to drop an
-      armed note selection.</div>
-  </footer>
+<body class="m-0 min-h-screen bg-[#212326] text-[#e8eaed] [font-family:-apple-system,'Segoe_UI',Roboto,sans-serif] px-4 pt-[18px]">
+  <div id="root"></div>
 
   <script>
+    const html = htm.bind(React.createElement);
+    const { useState, useRef, useEffect, useReducer, useCallback } = React;
+
     // ---------- 8-note diatonic set, C5 to C6 (bright toy-xylophone register) ----------
     const NOTES = [
       { name: 'C', freq: 523.25, color: 'var(--c1)' },
@@ -596,35 +81,7 @@
       { name: 'C2', freq: 1046.5, color: 'var(--c8)', label: 'C' },
     ];
 
-    // Bars: equal width, height steps down left to right, centered on one axis
-    const xyloEl = document.getElementById('xylo');
-    const barEls = [];
-    NOTES.forEach((n, i) => {
-      const key = document.createElement('div');
-      key.className = 'key';
-      const bar = document.createElement('div');
-      bar.className = 'bar';
-      bar.style.backgroundColor = n.color; // longhand, so the wood-grain background-image (CSS) isn't reset
-      bar.style.height = (310 - i * 16) + 'px';
-      bar.textContent = n.label || n.name;
-      bar.setAttribute('role', 'button');
-      bar.setAttribute('tabindex', '0');
-      bar.setAttribute('aria-label', `Bar ${i + 1}, note ${n.label || n.name}`);
-      // pointerdown, not click: the note sounds the moment the bar is pressed
-      bar.addEventListener('pointerdown', (e) => { e.preventDefault(); strike(i); });
-      bar.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); strike(i); }
-      });
-      const num = document.createElement('div');
-      num.className = 'num';
-      num.textContent = i + 1;
-      key.appendChild(bar);
-      key.appendChild(num);
-      xyloEl.appendChild(key);
-      barEls.push(bar);
-    });
-
-    // ---------- Sound: struck metal bar (glockenspiel-style modal synthesis) ----------
+    // ---------- Sound: struck metal/wood bar (modal synthesis) ----------
     let audioCtx = null, bus = null;
     function ctx() {
       if (!audioCtx) {
@@ -639,7 +96,6 @@
       }
       return audioCtx;
     }
-
     let noiseBuffer = null;
     function getNoiseBuffer(ac) {
       if (noiseBuffer) return noiseBuffer;
@@ -649,16 +105,13 @@
       for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
       return noiseBuffer;
     }
-
-    // Two bar materials, modeled as different modal profiles for the same struck-bar synth:
-    // metal keeps a long, bright, shimmering ring (detuned mode pair beats against itself);
-    // wood swaps in a marimba-style undercut-tuned partial set with a fast, dry decay and a
-    // louder low "thock" from the mallet strike instead of metal's high "ting".
+    // metal: long, bright, shimmering ring (detuned mode pair beats against itself).
+    // wood: marimba-style undercut-tuned partials, fast dry decay, low mallet "thock".
     const SOUND_PROFILES = {
       metal: {
         modes: [
           { ratio: 1.000, gain: 0.55, decay: 1.5 },
-          { ratio: 1.004, gain: 0.28, decay: 1.3 }, // detuned pair gives the natural shimmer
+          { ratio: 1.004, gain: 0.28, decay: 1.3 },
           { ratio: 2.756, gain: 0.20, decay: 0.60 },
           { ratio: 5.404, gain: 0.11, decay: 0.30 },
           { ratio: 8.933, gain: 0.05, decay: 0.16 },
@@ -669,40 +122,14 @@
       wood: {
         modes: [
           { ratio: 1.000, gain: 0.70, decay: 0.35 },
-          { ratio: 3.932, gain: 0.16, decay: 0.20 }, // undercut-tuned 2nd partial, marimba-style
+          { ratio: 3.932, gain: 0.16, decay: 0.20 },
           { ratio: 9.538, gain: 0.05, decay: 0.09 },
         ],
         noise: { freqMul: 1.1, gain: 0.40, decay: 0.02 },
-        lowpass: 3400, // dulls the attack/overtones for a warmer, woodier tone
+        lowpass: 3400,
       },
     };
-    function loadSoundPref() {
-      try { return localStorage.getItem('xyloSound') === 'wood' ? 'wood' : 'metal'; }
-      catch { return 'metal'; }
-    }
-    function saveSoundPref(v) {
-      try { localStorage.setItem('xyloSound', v); } catch { /* ignore, e.g. storage disabled */ }
-    }
-    let soundType = loadSoundPref();
-    document.body.dataset.material = soundType; // drives bar/chip color + grain via CSS vars
-
-    const soundToggle = document.getElementById('soundToggle');
-    function updateSoundToggleUI() {
-      soundToggle.querySelectorAll('.toggle-btn').forEach(b => {
-        b.classList.toggle('active', b.dataset.sound === soundType);
-      });
-    }
-    soundToggle.addEventListener('click', (e) => {
-      const btn = e.target.closest('.toggle-btn');
-      if (!btn || btn.dataset.sound === soundType) return;
-      soundType = btn.dataset.sound;
-      saveSoundPref(soundType);
-      document.body.dataset.material = soundType;
-      updateSoundToggleUI();
-    });
-    updateSoundToggleUI();
-
-    function playNote(i, when = 0, holdMs = 180) {
+    function playNote(i, soundType, barEls, when = 0, holdMs = 180) {
       const ac = ctx();
       const t0 = ac.currentTime + when;
       const freq = NOTES[i].freq * (1 + (Math.random() - 0.5) * 0.002);
@@ -725,8 +152,6 @@
       } else {
         chainEnd.connect(bus);
       }
-
-      // Transverse modes of the struck bar, fundamental dominant, ringing tail
       profile.modes.forEach(m => {
         const osc = ac.createOscillator();
         osc.type = 'sine';
@@ -739,8 +164,6 @@
         osc.start(t0);
         osc.stop(t0 + m.decay + 0.3);
       });
-
-      // Mallet contact: short band-limited noise tick (metal: a high "ting"; wood: a low "thock")
       const noise = ac.createBufferSource();
       noise.buffer = getNoiseBuffer(ac);
       const bp = ac.createBiquadFilter();
@@ -754,104 +177,41 @@
       noise.start(t0);
       noise.stop(t0 + profile.noise.decay + 0.02);
 
-      setTimeout(() => {
-        barEls[i].classList.add('active');
-        setTimeout(() => barEls[i].classList.remove('active'), holdMs);
-      }, Math.max(0, when * 1000));
+      const el = barEls && barEls[i];
+      if (el) {
+        setTimeout(() => {
+          el.classList.add('active');
+          setTimeout(() => el.classList.remove('active'), holdMs);
+        }, Math.max(0, when * 1000));
+      }
+    }
+    function loadSoundPref() {
+      try { return localStorage.getItem('xyloSound') === 'wood' ? 'wood' : 'metal'; }
+      catch { return 'metal'; }
+    }
+    function saveSoundPref(v) {
+      try { localStorage.setItem('xyloSound', v); } catch { /* ignore, e.g. storage disabled */ }
     }
 
-    // ---------- The pad: lines of notes, edited like text ----------
+    // ---------- The pad's data model: lines of notes, edited like text ----------
     // lines = [{notes:[{i,sec} | {rest:true,sec}], lyric:''}]
     // sec = seconds to hold before the next event starts. Captured from real
     // elapsed time when a note is played live; a fixed default otherwise.
     // cursor sits before notes[pos] on lines[line], like a text caret
-    const QUARTER_SEC = 0.4;                // default gap for a freshly typed/inserted note
-    const REST_UNIT_SEC = QUARTER_SEC / 4;  // one "." rest step
+    const QUARTER_SEC = 0.4;
+    const REST_UNIT_SEC = QUARTER_SEC / 4;
     const MIN_LIVE_GAP_SEC = 0.06;
-    const PHRASE_BREAK_SEC = 0.4;           // a pause longer than this starts a new line, not a held note
-    const MAX_PAUSE_SEC = 1.6;              // caps a genuinely huge pause (e.g. you stepped away) so it stays playable
+    const PHRASE_BREAK_SEC = 0.4;
+    const MAX_PAUSE_SEC = 1.6;
     const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-    let lines = [{ notes: [], lyric: '' }];
-    let cursor = { line: 0, pos: 0 };
-    let lastLiveNote = null; // {note, time}: tail of a run of live-played notes, for real-gap capture
-    const padEl = document.getElementById('pad');
-    const playBtn = document.getElementById('playBtn');
-    const bpmSlider = document.getElementById('bpmSlider');
-    const bpmLabel = document.getElementById('bpmLabel');
+    const dotCount = (n) => Math.max(1, Math.round(n.sec / REST_UNIT_SEC));
+    const hasNotes = (lines) => lines.some(l => l.notes.some(n => !n.rest));
 
-    bpmSlider.addEventListener('input', () => { bpmLabel.textContent = 'Speed ' + bpmSlider.value + '%'; });
-
-    function hasNotes() { return lines.some(l => l.notes.some(n => !n.rest)); }
-
-    // Custom tooltip for the gap dots: shows instantly and tracks the pointer,
-    // unlike the browser's built-in title (fixed delay, one string per element).
-    const gapTip = document.createElement('div');
-    gapTip.className = 'gaptip';
-    document.body.appendChild(gapTip);
-    function showGapTip(x, y, text) {
-      gapTip.textContent = text;
-      gapTip.style.left = x + 'px';
-      gapTip.style.top = y + 'px';
-      gapTip.style.display = 'block';
-    }
-    function hideGapTip() { gapTip.style.display = 'none'; }
-
-    // The gap after a note/rest, shown as clickable dots (one dot = REST_UNIT_SEC).
-    // Click past the dots to grow the gap; click a dot to cut it back to that point.
-    // Hovering previews what a click there would set the gap to.
-    function gapDots(n, li, ni) {
-      const wrap = document.createElement('span');
-      wrap.className = 'gap';
-      if (n.rest) wrap.dataset.pos = li + '-' + ni;
-      const count = Math.max(1, Math.round(n.sec / REST_UNIT_SEC));
-      for (let d = 0; d < count; d++) {
-        const dot = document.createElement('span');
-        dot.textContent = '·';
-        dot.dataset.step = d + 1; // clicking here sets the gap to this many steps
-        dot.addEventListener('pointerdown', (e) => {
-          e.stopPropagation();
-          if (lyricMode) return;
-          resetPlayer();
-          lastLiveNote = null;
-          n.sec = (d + 1) * REST_UNIT_SEC;
-          renderPad();
-        });
-        wrap.appendChild(dot);
-      }
-      wrap.addEventListener('pointermove', (e) => {
-        const dot = e.target.closest('[data-step]');
-        const steps = dot ? +dot.dataset.step : count + 1; // padding beyond the dots previews +1
-        const cur = count * REST_UNIT_SEC;
-        const delta = steps * REST_UNIT_SEC - cur;
-        const text = delta === 0
-          ? cur.toFixed(1) + 's'
-          : cur.toFixed(1) + (delta > 0 ? '+' : '-') + Math.abs(delta).toFixed(1) + 's';
-        showGapTip(e.clientX, wrap.getBoundingClientRect().top, text);
-      });
-      wrap.addEventListener('pointerleave', hideGapTip);
-      wrap.addEventListener('pointerdown', (e) => {
-        if (e.target !== wrap) return; // a specific dot already handled this click
-        e.stopPropagation();
-        if (lyricMode) return;
-        resetPlayer();
-        lastLiveNote = null;
-        n.sec += REST_UNIT_SEC;
-        renderPad();
-      });
-      return wrap;
-    }
-
-    // ---------- Lyric annotations: link a note or a run of notes to a stretch of the line's words ----------
+    // ---------- Lyric annotations: link a note or a run of notes to a stretch of a line's words ----------
     // A link is anchored on its first note: note.lyricStart/lyricEnd are character offsets into
     // the line's own `lyric` text, note.lyricSpan is how many consecutive notes (this one
     // included) it covers. Anchoring on the note object itself (not an index) means the link
     // rides along automatically when notes before it are inserted, deleted, or reordered.
-    let lyricMode = false;
-    let lyricSel = null; // {line, start, end}: notes[start..end] armed, waiting for a word selection
-
-    // Reads back every link on a line, in text order, by scanning for anchor notes.
-    // Nothing needs to stay in sync separately - a link disappears on its own the moment
-    // its anchor note is deleted.
     function collectLineTags(line) {
       const tags = [];
       line.notes.forEach((n, ni) => {
@@ -880,17 +240,12 @@
         if (noteOverlap || charOverlap) stripLyricTags([line.notes[t.noteIdx]]);
       });
     }
-    function linkLyricSelection(li, noteStart, noteEnd, charStart, charEnd) {
-      const line = lines[li];
+    function linkLyricSelection(line, noteStart, noteEnd, charStart, charEnd) {
       clearTagOverlap(line, noteStart, noteEnd, charStart, charEnd);
       const anchor = line.notes[noteStart];
       anchor.lyricStart = charStart;
       anchor.lyricEnd = charEnd;
       anchor.lyricSpan = noteEnd - noteStart + 1;
-    }
-    function unlinkTag(li, noteIdx) {
-      stripLyricTags([lines[li].notes[noteIdx]]);
-      renderPad();
     }
     // Flat character offset of (node, offset) within root's text, for turning a DOM Range
     // (which addresses a specific text node) into a plain index into line.lyric.
@@ -904,371 +259,6 @@
       }
       return total;
     }
-    // A collapsed click inside an existing linked word unlinks it; a real drag/double-click
-    // selection, with a note range already armed, links that selection to the armed notes.
-    function handleLyricMouseUp(wrap, li) {
-      const sel = window.getSelection();
-      if (!sel || sel.rangeCount === 0) return;
-      const range = sel.getRangeAt(0);
-      if (!wrap.contains(range.commonAncestorContainer)) return;
-      if (sel.isCollapsed) {
-        const container = range.startContainer;
-        const el = container.nodeType === 3 ? container.parentElement : container;
-        const tagSpan = el && el.closest && el.closest('.lyric-tagged');
-        if (tagSpan) unlinkTag(li, +tagSpan.dataset.tagNote);
-        return;
-      }
-      if (!lyricSel || lyricSel.line !== li) return;
-      const a = textOffset(wrap, range.startContainer, range.startOffset);
-      const b = textOffset(wrap, range.endContainer, range.endOffset);
-      const charStart = Math.min(a, b), charEnd = Math.max(a, b);
-      if (charEnd <= charStart) return;
-      linkLyricSelection(li, lyricSel.start, lyricSel.end, charStart, charEnd);
-      sel.removeAllRanges();
-      lyricSel = null;
-      renderPad();
-    }
-    const lyricModeBtn = document.getElementById('lyricModeBtn');
-    lyricModeBtn.addEventListener('click', () => {
-      lyricModeBtn.blur();
-      lyricMode = !lyricMode;
-      lyricSel = null;
-      lyricModeBtn.classList.toggle('primary', lyricMode);
-      document.body.classList.toggle('lyric-mode', lyricMode);
-      renderPad();
-    });
-
-    // Builds one note chip, wired for either cursor placement (normal mode) or
-    // lyric-range arming (lyric mode) depending on the current mode.
-    function buildChip(n, li, ni, tags) {
-      const chip = document.createElement('div');
-      chip.className = 'chip';
-      chip.style.background = NOTES[n.i].color;
-      chip.textContent = n.i + 1;
-      chip.dataset.pos = li + '-' + ni;
-      if (tags.some(t => ni >= t.noteIdx && ni <= t.noteIdx + t.noteSpan - 1)) chip.classList.add('lyric-linked');
-      if (lyricMode) {
-        const selected = lyricSel && lyricSel.line === li && ni >= lyricSel.start && ni <= lyricSel.end;
-        chip.classList.toggle('lyric-selecting', !!selected);
-        chip.addEventListener('pointerdown', (e) => {
-          e.stopPropagation();
-          if (!lyricSel || lyricSel.line !== li) lyricSel = { line: li, start: ni, end: ni };
-          else lyricSel = { line: li, start: Math.min(lyricSel.start, ni), end: Math.max(lyricSel.end, ni) };
-          renderPad();
-        });
-      } else {
-        chip.addEventListener('pointerdown', (e) => {
-          e.stopPropagation();
-          cursor = { line: li, pos: ni + 1 };
-          renderPad();
-        });
-      }
-      return chip;
-    }
-
-    // Renders a line's lyric caption: plain italic text outside lyric mode (unchanged from
-    // before), or an editable, taggable surface while lyric mode is on. Linked stretches are
-    // always shown underlined, even outside lyric mode, so the mapping stays visible at a glance.
-    function renderLyricCaption(line, li, tags) {
-      const text = line.lyric || '';
-      if (!text && !lyricMode) return null;
-      const wrap = document.createElement('div');
-      wrap.className = 'lyric';
-      if (lyricMode) {
-        wrap.contentEditable = 'true';
-        wrap.classList.add('lyric-editable');
-      }
-      let pos = 0;
-      tags.forEach(t => {
-        if (t.start > pos) wrap.appendChild(document.createTextNode(text.slice(pos, t.start)));
-        const span = document.createElement('span');
-        span.className = 'lyric-tagged';
-        span.dataset.tagLine = li;
-        span.dataset.tagNote = t.noteIdx;
-        span.textContent = text.slice(t.start, t.end);
-        wrap.appendChild(span);
-        pos = t.end;
-      });
-      if (pos < text.length) wrap.appendChild(document.createTextNode(text.slice(pos)));
-      if (lyricMode) {
-        // the row's own pointerdown handler would otherwise clear the armed note selection
-        // and rebuild the pad before the browser can focus/select inside this element
-        wrap.addEventListener('pointerdown', (e) => e.stopPropagation());
-        wrap.addEventListener('mouseup', () => handleLyricMouseUp(wrap, li));
-        wrap.addEventListener('input', () => {
-          // free-typed edits can't be safely re-mapped onto the old offsets, so they void
-          // this line's links rather than risk a link silently pointing at the wrong word
-          line.lyric = wrap.textContent;
-          stripLyricTags(line.notes);
-        });
-        wrap.addEventListener('blur', renderPad); // normalizes the DOM back into tag spans
-      }
-      return wrap;
-    }
-
-    function renderPad() {
-      hideGapTip(); // the hovered element is about to be torn down and rebuilt
-      padEl.innerHTML = '';
-      const empty = lines.length === 1 && lines[0].notes.length === 0;
-      let caretEl = null;
-      lines.forEach((line, li) => {
-        const row = document.createElement('div');
-        row.className = 'pline';
-        const notesRow = document.createElement('div');
-        notesRow.className = 'pnotes';
-        const putCaret = () => {
-          caretEl = document.createElement('span');
-          caretEl.className = 'caret';
-          notesRow.appendChild(caretEl);
-        };
-        const tags = collectLineTags(line);
-        line.notes.forEach((n, ni) => {
-          if (li === cursor.line && ni === cursor.pos && !lyricMode) putCaret();
-          if (!n.rest) notesRow.appendChild(buildChip(n, li, ni, tags));
-          notesRow.appendChild(gapDots(n, li, ni));
-        });
-        if (li === cursor.line && cursor.pos >= line.notes.length && !lyricMode) putCaret();
-        if (empty) {
-          const p = document.createElement('span');
-          p.className = 'placeholder';
-          p.textContent = 'Tap the bars to write your tune…';
-          notesRow.appendChild(p);
-        }
-        row.addEventListener('pointerdown', () => {
-          if (lyricMode) { lyricSel = null; renderPad(); return; }
-          cursor = { line: li, pos: line.notes.length };
-          renderPad();
-        });
-        row.appendChild(notesRow);
-        const caption = renderLyricCaption(line, li, tags);
-        if (caption) row.appendChild(caption);
-        padEl.appendChild(row);
-      });
-      updatePlayBtn();
-      if (caretEl) caretEl.scrollIntoView({ block: 'nearest' });
-    }
-
-    function strike(i) {
-      playNote(i);
-      resetPlayer();
-      const now = performance.now();
-      const atEnd = cursor.line === lines.length - 1 && cursor.pos === lines[cursor.line].notes.length;
-      const continuesLive = atEnd && lastLiveNote && lastLiveNote.note === lines[cursor.line].notes[cursor.pos - 1];
-      if (continuesLive) {
-        const gapSec = (now - lastLiveNote.time) / 1000;
-        lastLiveNote.note.sec = clamp(gapSec, MIN_LIVE_GAP_SEC, MAX_PAUSE_SEC);
-        if (gapSec > PHRASE_BREAK_SEC) {
-          // a pause this long also reads as the start of a new phrase, not just a held note
-          lines.push({ notes: [], lyric: '' });
-          cursor = { line: lines.length - 1, pos: 0 };
-        }
-      }
-      const note = { i, sec: QUARTER_SEC };
-      invalidateTagsAt(lines[cursor.line], cursor.pos);
-      lines[cursor.line].notes.splice(cursor.pos, 0, note);
-      cursor.pos++;
-      lastLiveNote = atEnd ? { note, time: now } : null;
-      renderPad();
-    }
-    function newLine() {
-      // split the current line at the caret, like Enter in a text editor
-      resetPlayer();
-      lastLiveNote = null;
-      invalidateTagsAt(lines[cursor.line], cursor.pos); // splitting mid-link would corrupt it
-      const tail = lines[cursor.line].notes.splice(cursor.pos);
-      stripLyricTags(tail); // the new line has no lyric text yet for these to point into
-      lines.splice(cursor.line + 1, 0, { notes: tail, lyric: '' });
-      cursor = { line: cursor.line + 1, pos: 0 };
-      renderPad();
-    }
-    const dotCount = (n) => Math.max(1, Math.round(n.sec / REST_UNIT_SEC));
-    // One dot at a time: shrink the gap before/after the note, and only remove
-    // the note itself once its dots have run out.
-    function backspace() {
-      resetPlayer();
-      lastLiveNote = null;
-      const line = lines[cursor.line];
-      if (cursor.pos > 0) {
-        const n = line.notes[cursor.pos - 1];
-        if (dotCount(n) > 1) {
-          n.sec -= REST_UNIT_SEC;
-        } else {
-          invalidateTagsAt(line, cursor.pos - 1);
-          line.notes.splice(cursor.pos - 1, 1);
-          cursor.pos--;
-        }
-      } else if (cursor.line > 0) {
-        const prev = lines[cursor.line - 1];
-        cursor = { line: cursor.line - 1, pos: prev.notes.length };
-        stripLyricTags(line.notes); // this line's lyric text (and its links) is being dropped
-        prev.notes = prev.notes.concat(line.notes);
-        lines.splice(cursor.line + 1, 1);
-      }
-      renderPad();
-    }
-    function forwardDelete() {
-      resetPlayer();
-      lastLiveNote = null;
-      const line = lines[cursor.line];
-      if (cursor.pos < line.notes.length) {
-        const n = line.notes[cursor.pos];
-        if (dotCount(n) > 1) {
-          n.sec -= REST_UNIT_SEC;
-        } else {
-          invalidateTagsAt(line, cursor.pos);
-          line.notes.splice(cursor.pos, 1);
-        }
-      } else if (cursor.line < lines.length - 1) {
-        stripLyricTags(lines[cursor.line + 1].notes); // its lyric text is being dropped, not merged
-        line.notes = line.notes.concat(lines[cursor.line + 1].notes);
-        lines.splice(cursor.line + 1, 1);
-      }
-      renderPad();
-    }
-    // Shift+Delete: drop the note and its dots in one shot, no granular step-down.
-    function hardDelete() {
-      resetPlayer();
-      lastLiveNote = null;
-      const line = lines[cursor.line];
-      if (cursor.pos < line.notes.length) {
-        invalidateTagsAt(line, cursor.pos);
-        line.notes.splice(cursor.pos, 1);
-      } else if (cursor.line < lines.length - 1) {
-        stripLyricTags(lines[cursor.line + 1].notes);
-        line.notes = line.notes.concat(lines[cursor.line + 1].notes);
-        lines.splice(cursor.line + 1, 1);
-      }
-      renderPad();
-    }
-    // Space or "." grows the gap before the cursor by one dot, same as clicking past the dots.
-    function addDot() {
-      if (cursor.pos === 0) return;
-      resetPlayer();
-      lastLiveNote = null;
-      lines[cursor.line].notes[cursor.pos - 1].sec += REST_UNIT_SEC;
-      renderPad();
-    }
-    function moveCursor(key) {
-      const len = () => lines[cursor.line].notes.length;
-      if (key === 'ArrowLeft') {
-        if (cursor.pos > 0) cursor.pos--;
-        else if (cursor.line > 0) { cursor.line--; cursor.pos = len(); }
-      } else if (key === 'ArrowRight') {
-        if (cursor.pos < len()) cursor.pos++;
-        else if (cursor.line < lines.length - 1) { cursor.line++; cursor.pos = 0; }
-      } else if (key === 'ArrowUp') {
-        if (cursor.line > 0) { cursor.line--; cursor.pos = Math.min(cursor.pos, len()); }
-        else cursor.pos = 0;
-      } else if (key === 'ArrowDown') {
-        if (cursor.line < lines.length - 1) { cursor.line++; cursor.pos = Math.min(cursor.pos, len()); }
-        else cursor.pos = len();
-      } else if (key === 'Home') {
-        cursor.pos = 0;
-      } else if (key === 'End') {
-        cursor.pos = len();
-      }
-      renderPad();
-    }
-
-    document.getElementById('clearBtn').addEventListener('click', () => {
-      resetPlayer();
-      lastLiveNote = null;
-      lines = [{ notes: [], lyric: '' }];
-      cursor = { line: 0, pos: 0 };
-      setCurrentSong(null);
-      selectTuneOption(null);
-      renderPad();
-    });
-
-    document.addEventListener('keydown', (e) => {
-      const tagName = e.target.tagName;
-      if (tagName === 'INPUT' || tagName === 'SELECT' || tagName === 'TEXTAREA' || tagName === 'BUTTON') return;
-      if (e.target.isContentEditable) return; // typing into the lyric caption - browser handles all keys
-      if (e.target.classList && e.target.classList.contains('bar') && (e.key === 'Enter' || e.key === ' ')) return; // bar handles its own strike
-      if (lyricMode) {
-        if (e.key === 'Escape' && lyricSel) { e.preventDefault(); lyricSel = null; renderPad(); }
-        return;
-      }
-      if (e.key >= '1' && e.key <= '8') { if (!e.repeat) strike(+e.key - 1); }
-      else if (e.key === 'Enter') { if (!e.repeat) newLine(); }
-      else if (e.key === 'Backspace') { e.preventDefault(); backspace(); }
-      else if (e.key === 'Delete' && e.shiftKey) { e.preventDefault(); hardDelete(); }
-      else if (e.key === 'Delete') { forwardDelete(); }
-      else if (e.key === ' ' || e.key === '.') { e.preventDefault(); addDot(); }
-      else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) {
-        e.preventDefault();
-        moveCursor(e.key);
-      }
-    });
-
-    // ---------- Playback: steps note by note so it can pause, resume, restart ----------
-    const restartBtn = document.getElementById('restartBtn');
-    let player = { events: [], idx: 0, timer: null, playing: false };
-
-    function buildEvents() {
-      const evs = [];
-      lines.forEach((line, li) => {
-        line.notes.forEach((n, ni) => evs.push({ li, ni, rest: !!n.rest, i: n.i, sec: n.sec }));
-      });
-      return evs;
-    }
-    function updatePlayBtn() {
-      playBtn.disabled = !hasNotes();
-      restartBtn.disabled = !hasNotes();
-      playBtn.textContent = player.playing ? '⏸ Pause' : (player.idx > 0 ? '▶ Resume' : '▶ Play');
-    }
-    function clearPlayingHighlight() {
-      padEl.querySelectorAll('.playing').forEach(el => el.classList.remove('playing'));
-    }
-    function step() {
-      if (player.idx >= player.events.length) { finishPlayback(); return; }
-      const ev = player.events[player.idx];
-      const speed = parseInt(bpmSlider.value, 10) / 100; // 100% = play back exactly as recorded
-      const durMs = ev.sec * 1000 / speed;
-      if (!ev.rest) playNote(ev.i, 0, durMs * 0.9);
-      clearPlayingHighlight();
-      const el = padEl.querySelector(`[data-pos="${ev.li}-${ev.ni}"]`);
-      if (el) { el.classList.add('playing'); el.scrollIntoView({ block: 'nearest' }); }
-      const tag = collectLineTags(lines[ev.li]).find(t => ev.ni >= t.noteIdx && ev.ni <= t.noteIdx + t.noteSpan - 1);
-      if (tag) {
-        const tagEl = padEl.querySelector(`.lyric-tagged[data-tag-line="${ev.li}"][data-tag-note="${tag.noteIdx}"]`);
-        if (tagEl) tagEl.classList.add('playing');
-      }
-      player.idx++;
-      player.timer = setTimeout(step, durMs);
-    }
-    function startOrResume() {
-      if (player.playing) return;
-      if (player.idx === 0) player.events = buildEvents();
-      if (player.events.length === 0) return;
-      player.playing = true;
-      updatePlayBtn();
-      step();
-    }
-    function pausePlayback() {
-      clearTimeout(player.timer);
-      player.playing = false;
-      updatePlayBtn();
-    }
-    function finishPlayback() {
-      clearTimeout(player.timer);
-      player.playing = false;
-      player.idx = 0;
-      clearPlayingHighlight();
-      updatePlayBtn();
-    }
-    // any edit rewinds the player, since positions in the pad may have changed
-    function resetPlayer() { finishPlayback(); }
-
-    playBtn.addEventListener('click', () => {
-      playBtn.blur();
-      if (player.playing) pausePlayback(); else startOrResume();
-    });
-    restartBtn.addEventListener('click', () => {
-      restartBtn.blur();
-      finishPlayback();
-      startOrResume();
-    });
 
     // ---------- Built-in tunes (public domain): notes + the rhyme line below ----------
     // "5-" holds longer, "5--" longer still; "." is a short rest.
@@ -1299,7 +289,6 @@
         { n: "1 1 2 3 2- 1 1-", t: "" },
       ],
     };
-
     function parseLine(str) {
       const notes = [];
       str.trim().split(/\s+/).forEach(tok => {
@@ -1311,117 +300,17 @@
     }
 
     // ---------- Saved songs: your own tunes, kept in localStorage ----------
-    // savedSongs: { [name]: { lines } } - same lines shape the pad itself uses,
-    // so a saved song replays with its exact recorded timing, not a quantized guess.
     function loadSavedSongs() {
       try { return JSON.parse(localStorage.getItem('xyloSongs')) || {}; }
       catch { return {}; }
     }
-    function persistSavedSongs() {
-      try { localStorage.setItem('xyloSongs', JSON.stringify(savedSongs)); }
+    function persistSavedSongs(songs) {
+      try { localStorage.setItem('xyloSongs', JSON.stringify(songs)); }
       catch { /* ignore, e.g. storage disabled */ }
     }
     function cloneLines(ls) {
       return ls.map(l => ({ lyric: l.lyric, notes: l.notes.map(n => ({ ...n })) }));
     }
-    let savedSongs = loadSavedSongs();
-    let currentSongName = null; // the saved song currently loaded in the pad, if any - lets Save update it in place
-
-    const sel = document.getElementById('exampleSelect');
-    const saveSongBtn = document.getElementById('saveSongBtn');
-    const deleteSongBtn = document.getElementById('deleteSongBtn');
-
-    function setCurrentSong(name) {
-      currentSongName = name;
-      deleteSongBtn.disabled = !currentSongName;
-    }
-
-    function refreshSongSelect() {
-      sel.innerHTML = '';
-      const placeholder = document.createElement('option');
-      placeholder.value = '';
-      placeholder.textContent = 'Pick a tune…';
-      sel.appendChild(placeholder);
-
-      const builtGroup = document.createElement('optgroup');
-      builtGroup.label = 'Built-in';
-      Object.keys(EXAMPLES).forEach(name => {
-        const o = document.createElement('option');
-        o.value = name; o.textContent = name; o.dataset.kind = 'example';
-        builtGroup.appendChild(o);
-      });
-      sel.appendChild(builtGroup);
-
-      const names = Object.keys(savedSongs).sort((a, b) => a.localeCompare(b));
-      if (names.length) {
-        const mineGroup = document.createElement('optgroup');
-        mineGroup.label = 'My Songs';
-        names.forEach(name => {
-          const o = document.createElement('option');
-          o.value = name; o.textContent = name; o.dataset.kind = 'song';
-          mineGroup.appendChild(o);
-        });
-        sel.appendChild(mineGroup);
-      }
-    }
-    refreshSongSelect();
-
-    // Selects the option matching this exact kind+name (not just value, since a saved
-    // song's name can collide with a built-in's) - falls back to the placeholder.
-    function selectTuneOption(kind, name) {
-      const opt = kind && Array.from(sel.options).find(o => o.dataset.kind === kind && o.value === name);
-      if (opt) opt.selected = true; else sel.value = '';
-    }
-
-    sel.addEventListener('change', () => {
-      if (!sel.value) return;
-      const opt = sel.selectedOptions[0];
-      resetPlayer();
-      lastLiveNote = null;
-      if (opt.dataset.kind === 'song') {
-        lines = cloneLines(savedSongs[opt.value].lines);
-        setCurrentSong(opt.value);
-      } else {
-        lines = EXAMPLES[opt.value].map(l => ({ notes: parseLine(l.n), lyric: l.t || '' }));
-        setCurrentSong(null);
-      }
-      cursor = { line: lines.length - 1, pos: lines[lines.length - 1].notes.length };
-      renderPad();
-      sel.blur();
-    });
-
-    saveSongBtn.addEventListener('click', () => {
-      saveSongBtn.blur();
-      if (!hasNotes()) { alert('Play or write some notes before saving a song.'); return; }
-      const name = prompt('Song name:', currentSongName || '');
-      if (name === null) return;
-      const trimmed = name.trim();
-      if (!trimmed) return;
-      if (savedSongs[trimmed] && trimmed !== currentSongName) {
-        if (!confirm(`"${trimmed}" already exists. Overwrite it?`)) return;
-      }
-      savedSongs[trimmed] = { lines: cloneLines(lines) };
-      persistSavedSongs();
-      refreshSongSelect();
-      setCurrentSong(trimmed);
-      selectTuneOption('song', trimmed);
-    });
-
-    deleteSongBtn.addEventListener('click', () => {
-      deleteSongBtn.blur();
-      if (!currentSongName) return;
-      if (!confirm(`Delete "${currentSongName}"?`)) return;
-      delete savedSongs[currentSongName];
-      persistSavedSongs();
-      refreshSongSelect();
-      setCurrentSong(null);
-      selectTuneOption(null);
-      resetPlayer();
-      lastLiveNote = null;
-      lines = [{ notes: [], lyric: '' }];
-      cursor = { line: 0, pos: 0 };
-      renderPad();
-    });
 
     // ---------- Pitch detection (autocorrelation, ACF2+) ----------
     function autoCorrelate(buf, sampleRate) {
@@ -1429,15 +318,13 @@
       let rms = 0;
       for (let i = 0; i < SIZE; i++) { const v = buf[i]; rms += v * v; }
       rms = Math.sqrt(rms / SIZE);
-      if (rms < 0.010) return -1; // too quiet
-
+      if (rms < 0.010) return -1;
       let r1 = 0, r2 = SIZE - 1, thres = 0.2;
       for (let i = 0; i < SIZE / 2; i++) { if (Math.abs(buf[i]) < thres) { r1 = i; break; } }
       for (let i = 1; i < SIZE / 2; i++) { if (Math.abs(buf[SIZE - i]) < thres) { r2 = SIZE - i; break; } }
       buf = buf.slice(r1, r2);
       SIZE = buf.length;
       if (SIZE < 512) return -1;
-
       const c = new Array(SIZE).fill(0);
       for (let i = 0; i < SIZE; i++) {
         for (let j = 0; j < SIZE - i; j++) { c[i] += buf[j] * buf[j + i]; }
@@ -1454,156 +341,729 @@
       if (a) T0 = T0 - b / (2 * a);
       return sampleRate / T0;
     }
-
     function freqToNoteIndex(freq) {
       if (freq <= 0) return -1;
-      // fold into the diatonic set by nearest pitch class, octave ignored
       const semis = 12 * Math.log2(freq / 261.63);
       const pitchClass = ((Math.round(semis) % 12) + 12) % 12;
       const chromaticToScaleDegree = { 0: 0, 1: 0, 2: 1, 3: 1, 4: 2, 5: 3, 6: 3, 7: 4, 8: 4, 9: 5, 10: 5, 11: 6 };
       return chromaticToScaleDegree[pitchClass];
     }
 
-    // Detected notes flow into the pad; a phrase-length pause starts a new line, same as live playing
-    function loadDetected(detected) {
-      // detected: [{i, t}] with t = seconds into the file; real gaps become note durations
-      resetPlayer();
-      lastLiveNote = null;
-      lines = [{ notes: [], lyric: '' }];
-      setCurrentSong(null);
-      selectTuneOption(null);
-      detected.forEach((d, k) => {
-        const next = detected[k + 1];
-        const gap = next ? next.t - d.t : QUARTER_SEC;
-        if (lines[lines.length - 1].notes.length >= 8) lines.push({ notes: [], lyric: '' });
-        lines[lines.length - 1].notes.push({ i: d.i, sec: clamp(gap, MIN_LIVE_GAP_SEC, MAX_PAUSE_SEC) });
-        if (next && gap > PHRASE_BREAK_SEC) lines.push({ notes: [], lyric: '' });
+    const BTN = "font-semibold text-[13px] border border-[#3a3d42] rounded-lg px-[13px] py-[7px] cursor-pointer text-[#e8eaed] bg-[#35383d] hover:bg-[#3f434a] active:translate-y-px disabled:opacity-45 disabled:cursor-not-allowed transition-colors";
+    const BTN_PRIMARY = "bg-[#12897e] border-transparent hover:bg-[#0f9c8f]";
+    const BTN_DANGER = "bg-[#a83a32] border-transparent hover:bg-[#c2443a]";
+    const cx = (...xs) => xs.filter(Boolean).join(' ');
+
+    function Bar({ note, index, barRef, onStrike }) {
+      return html`
+        <div class="flex flex-col items-center gap-3">
+          <div
+            ref=${barRef}
+            class="bar w-[clamp(38px,5.6vw,54px)] rounded-[10px] cursor-pointer flex items-center justify-center [font-family:Georgia,'Times_New_Roman',serif] font-bold text-[26px] text-[#17181a] shadow-[0_3px_8px_rgba(0,0,0,.4)] transition-[filter,transform] duration-75 select-none [-webkit-tap-highlight-color:transparent] [touch-action:manipulation] hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white focus-visible:outline-offset-[3px]"
+            style=${{ backgroundColor: note.color, height: (310 - index * 16) + 'px' }}
+            role="button"
+            tabindex="0"
+            aria-label=${`Bar ${index + 1}, note ${note.label || note.name}`}
+            onPointerDown=${(e) => { e.preventDefault(); onStrike(index); }}
+            onKeyDown=${(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onStrike(index); } }}
+          >${note.label || note.name}</div>
+          <div class="text-base text-[#cfd2d6] font-semibold">${index + 1}</div>
+        </div>`;
+    }
+
+    function Xylophone({ barRefs, onStrike }) {
+      return html`
+        <div class="flex justify-center items-center gap-[clamp(6px,1.3vw,13px)]">
+          ${NOTES.map((n, i) => html`<${Bar} key=${i} note=${n} index=${i} onStrike=${onStrike}
+            barRef=${(el) => { barRefs.current[i] = el; }} />`)}
+        </div>`;
+    }
+
+    function SoundToggle({ soundType, onChange }) {
+      const opt = (id, label) => html`
+        <button type="button" key=${id}
+          class=${cx("font-semibold text-[13px] border-0 px-3 py-[7px] cursor-pointer transition-colors",
+            id !== 'wood' && "border-r border-[#3a3d42]",
+            soundType === id ? "bg-[#12897e] text-white" : "text-[#9aa0a6] bg-[#35383d] hover:bg-[#3f434a]")}
+          onClick=${() => onChange(id)}>${label}</button>`;
+      return html`
+        <div class="flex border border-[#3a3d42] rounded-lg overflow-hidden" role="group" aria-label="Bar material">
+          ${opt('metal', '🔔 Metal')}${opt('wood', '🪵 Wood')}
+        </div>`;
+    }
+
+    // The gap after a note/rest, shown as clickable dots (one dot = REST_UNIT_SEC).
+    // Click past the dots to grow the gap; click a dot to cut it back to that point.
+    function GapDots({ n, li, ni, lyricMode, onSetSec, onGrow, onTip, onHideTip }) {
+      const count = Math.max(1, Math.round(n.sec / REST_UNIT_SEC));
+      const dots = [];
+      for (let d = 0; d < count; d++) dots.push(d);
+      return html`
+        <span class="inline-flex items-center text-[#6f7479] text-[15px] font-bold tracking-[1px] cursor-pointer pr-1.5 pl-0.5 py-0.5 rounded-md hover:bg-[#35383d] hover:text-[#9aa0a6]"
+          data-pos=${n.rest ? (li + '-' + ni) : undefined}
+          onPointerMove=${(e) => {
+            const dot = e.target.closest('[data-step]');
+            const steps = dot ? +dot.dataset.step : count + 1;
+            const cur = count * REST_UNIT_SEC;
+            const delta = steps * REST_UNIT_SEC - cur;
+            const text = delta === 0 ? cur.toFixed(1) + 's'
+              : cur.toFixed(1) + (delta > 0 ? '+' : '-') + Math.abs(delta).toFixed(1) + 's';
+            onTip(e.clientX, e.currentTarget.getBoundingClientRect().top, text);
+          }}
+          onPointerLeave=${onHideTip}
+          onPointerDown=${(e) => {
+            if (e.target !== e.currentTarget) return;
+            e.stopPropagation();
+            if (lyricMode) return;
+            onGrow();
+          }}
+        >${dots.map(d => html`
+          <span key=${d} data-step=${d + 1}
+            onPointerDown=${(e) => { e.stopPropagation(); if (lyricMode) return; onSetSec((d + 1) * REST_UNIT_SEC); }}
+          >·</span>`)}</span>`;
+    }
+
+    // One note chip: cursor placement in normal mode, lyric-range arming in lyric mode.
+    function Chip({ n, li, ni, linked, lyricMode, selected, playing, onArm, onPlace }) {
+      return html`
+        <div
+          class=${cx("chip w-6 h-6 rounded-md flex items-center justify-center text-[12.5px] font-bold text-white [text-shadow:0_1px_2px_rgba(0,0,0,.35)] flex-none cursor-pointer",
+            linked && "lyric-linked", selected && "lyric-selecting", playing && "playing")}
+          style=${{ background: NOTES[n.i].color }}
+          data-pos=${li + '-' + ni}
+          onPointerDown=${(e) => { e.stopPropagation(); lyricMode ? onArm(li, ni) : onPlace(li, ni); }}
+        >${n.i + 1}</div>`;
+    }
+
+    function LyricCaption({ line, li, tags, lyricMode, playingTagKey, onLinkSelection, onUnlink, onCaptionDone }) {
+      const wrapRef = useRef(null);
+      const text = line.lyric || '';
+      if (!text && !lyricMode) return null;
+
+      const handleMouseUp = () => {
+        const wrap = wrapRef.current;
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0) return;
+        const range = sel.getRangeAt(0);
+        if (!wrap.contains(range.commonAncestorContainer)) return;
+        if (sel.isCollapsed) {
+          const container = range.startContainer;
+          const el = container.nodeType === 3 ? container.parentElement : container;
+          const tagSpan = el && el.closest && el.closest('.lyric-tagged');
+          if (tagSpan) onUnlink(li, +tagSpan.dataset.tagNote);
+          return;
+        }
+        const a = textOffset(wrap, range.startContainer, range.startOffset);
+        const b = textOffset(wrap, range.endContainer, range.endOffset);
+        const charStart = Math.min(a, b), charEnd = Math.max(a, b);
+        if (charEnd <= charStart) return;
+        sel.removeAllRanges();
+        onLinkSelection(li, charStart, charEnd);
+      };
+      const handleInput = () => {
+        // free-typed edits can't be safely re-mapped onto the old offsets, so they void
+        // this line's links rather than risk a link silently pointing at the wrong word
+        line.lyric = wrapRef.current.textContent;
+        stripLyricTags(line.notes);
+      };
+
+      const parts = [];
+      let pos = 0;
+      tags.forEach(t => {
+        if (t.start > pos) parts.push(text.slice(pos, t.start));
+        const key = li + '-' + t.noteIdx;
+        parts.push(html`
+          <span key=${key} class=${cx("lyric-tagged font-bold not-italic", lyricMode && "cursor-pointer", playingTagKey === key && "playing")}
+            data-tag-note=${t.noteIdx}>${text.slice(t.start, t.end)}</span>`);
+        pos = t.end;
       });
-      cursor = { line: lines.length - 1, pos: lines[lines.length - 1].notes.length };
-      renderPad();
+      if (pos < text.length) parts.push(text.slice(pos));
+
+      return html`
+        <div ref=${wrapRef}
+          class=${cx("lyric text-[11.5px] text-[#84898e] italic mt-[3px]",
+            lyricMode && "lyric-editable not-italic outline outline-1 outline-dashed outline-[#3a3d42] outline-offset-[3px] rounded cursor-text min-h-[14px]")}
+          contentEditable=${lyricMode}
+          suppressContentEditableWarning=${true}
+          onPointerDown=${lyricMode ? (e) => e.stopPropagation() : undefined}
+          onMouseUp=${lyricMode ? handleMouseUp : undefined}
+          onInput=${lyricMode ? handleInput : undefined}
+          onBlur=${lyricMode ? onCaptionDone : undefined}
+        >${parts}</div>`;
     }
 
-    // ---------- Microphone humming mode ----------
-    let micStream = null, micAnalyser = null, micRunning = false, micRAF = null;
-    let lastNote = -1, stableCount = 0, lastAddTime = 0, lastMicNoteRef = null;
-    const micBtn = document.getElementById('micBtn');
-
-    micBtn.addEventListener('click', async () => {
-      if (micRunning) { stopMic(); return; }
-      try {
-        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      } catch (e) {
-        alert("Couldn't access the microphone. Check the browser's permission settings.");
-        return;
-      }
-      const ac = ctx();
-      const micSource = ac.createMediaStreamSource(micStream);
-      micAnalyser = ac.createAnalyser();
-      micAnalyser.fftSize = 2048;
-      micSource.connect(micAnalyser);
-      micRunning = true;
-      micBtn.textContent = '⏹ Stop';
-      micBtn.classList.add('danger');
-      micBtn.blur();
-      resetPlayer();
-      lastLiveNote = null;
-      lines = [{ notes: [], lyric: '' }];
-      cursor = { line: 0, pos: 0 };
-      setCurrentSong(null);
-      selectTuneOption(null);
-      renderPad();
-      lastNote = -1; stableCount = 0; lastAddTime = 0; lastMicNoteRef = null;
-      const buf = new Float32Array(micAnalyser.fftSize);
-      function loop() {
-        if (!micRunning) return;
-        micAnalyser.getFloatTimeDomainData(buf);
-        const freq = autoCorrelate(buf, ac.sampleRate);
-        if (freq > 0 && freq < 1200) {
-          const idx = freqToNoteIndex(freq);
-          if (idx === lastNote) { stableCount++; } else { lastNote = idx; stableCount = 1; }
-          const now = performance.now();
-          if (stableCount === 4 && now - lastAddTime > 280) {
-            if (lastMicNoteRef) {
-              const gapSec = (now - lastAddTime) / 1000;
-              lastMicNoteRef.sec = clamp(gapSec, MIN_LIVE_GAP_SEC, MAX_PAUSE_SEC);
-              if (gapSec > PHRASE_BREAK_SEC) lines.push({ notes: [], lyric: '' });
-            }
-            const cur = lines[lines.length - 1];
-            if (cur.notes.length >= 8) lines.push({ notes: [], lyric: '' });
-            const note = { i: idx, sec: QUARTER_SEC };
-            lines[lines.length - 1].notes.push(note);
-            lastMicNoteRef = note;
-            cursor = { line: lines.length - 1, pos: lines[lines.length - 1].notes.length };
-            renderPad();
-            playNote(idx);
-            lastAddTime = now;
-          }
+    function PadLine({ line, li, cursor, lyricMode, lyricSel, playingPos, playingTagKey, empty,
+      onArmNote, onPlaceCursor, onSetGapSec, onGrowGap, onTip, onHideTip,
+      onLinkSelection, onUnlink, onCaptionDone, onRowClick }) {
+      const tags = collectLineTags(line);
+      const items = [];
+      line.notes.forEach((n, ni) => {
+        if (li === cursor.line && ni === cursor.pos && !lyricMode) items.push(html`<span key=${'caret-' + ni} class="caret"></span>`);
+        if (!n.rest) {
+          const linked = tags.some(t => ni >= t.noteIdx && ni <= t.noteIdx + t.noteSpan - 1);
+          const selected = !!(lyricMode && lyricSel && lyricSel.line === li && ni >= lyricSel.start && ni <= lyricSel.end);
+          const playing = !!(playingPos && playingPos.li === li && playingPos.ni === ni);
+          items.push(html`<${Chip} key=${'chip-' + ni} n=${n} li=${li} ni=${ni} linked=${linked} lyricMode=${lyricMode}
+            selected=${selected} playing=${playing} onArm=${onArmNote} onPlace=${onPlaceCursor} />`);
         }
-        micRAF = requestAnimationFrame(loop);
-      }
-      loop();
-    });
-    function stopMic() {
-      micRunning = false;
-      if (micRAF) cancelAnimationFrame(micRAF);
-      if (micStream) micStream.getTracks().forEach(t => t.stop());
-      micBtn.textContent = '🎤 Hum it';
-      micBtn.classList.remove('danger');
+        items.push(html`<${GapDots} key=${'gap-' + ni} n=${n} li=${li} ni=${ni} lyricMode=${lyricMode}
+          onSetSec=${(sec) => onSetGapSec(li, ni, sec)} onGrow=${() => onGrowGap(li, ni)}
+          onTip=${onTip} onHideTip=${onHideTip} />`);
+      });
+      if (li === cursor.line && cursor.pos >= line.notes.length && !lyricMode) items.push(html`<span key="caret-end" class="caret"></span>`);
+      if (empty) items.push(html`<span key="ph" class="text-[#6f7479] text-[12.5px] italic">Tap the bars to write your tune…</span>`);
+
+      return html`
+        <div class="py-[5px] border-b border-[#33363b] last:border-b-0"
+          onPointerDown=${() => onRowClick(li)}>
+          <div class=${cx("flex flex-wrap gap-[5px] items-center min-h-[26px]", lyricMode ? "cursor-default" : "cursor-text")}>${items}</div>
+          <${LyricCaption} line=${line} li=${li} tags=${tags} lyricMode=${lyricMode} playingTagKey=${playingTagKey}
+            onLinkSelection=${onLinkSelection} onUnlink=${onUnlink} onCaptionDone=${onCaptionDone} />
+        </div>`;
     }
 
-    // ---------- File upload mode ----------
-    const fileBtn = document.getElementById('fileBtn');
-    const fileInput = document.getElementById('fileInput');
-    fileBtn.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      try {
-        const ac = ctx();
-        const arrayBuf = await file.arrayBuffer();
-        const audioBuf = await ac.decodeAudioData(arrayBuf);
-        const channel = audioBuf.getChannelData(0);
-        const sr = audioBuf.sampleRate;
-        const winSize = 2048, hop = 1024;
-        const detected = [];
-        let lastN = -1, stable = 0;
-        for (let start = 0; start + winSize < channel.length; start += hop) {
-          const frame = channel.subarray(start, start + winSize);
-          const freq = autoCorrelate(frame, sr);
-          if (freq > 60 && freq < 1200) {
-            const idx = freqToNoteIndex(freq);
-            if (idx === lastN) { stable++; } else { lastN = idx; stable = 1; }
-            if (stable === 3) {
-              const t = start / sr;
-              if (detected.length === 0 || detected[detected.length - 1].i !== idx) detected.push({ i: idx, t });
-            }
-          } else {
-            lastN = -1; stable = 0;
+    function GapTooltip({ tip }) {
+      if (!tip) return null;
+      return ReactDOM.createPortal(
+        html`<div class="fixed [transform:translate(-50%,calc(-100%-8px))] bg-[#111214] text-[#e8eaed] font-semibold text-[11px] px-1.5 py-0.5 rounded border border-[#3a3d42] pointer-events-none whitespace-nowrap z-50"
+          style=${{ left: tip.x + 'px', top: tip.y + 'px' }}>${tip.text}</div>`,
+        document.body);
+    }
+
+    function App() {
+      const [, bump] = useReducer(x => x + 1, 0);
+      const forceUpdate = useCallback(() => bump(), []);
+
+      const S = useRef(null);
+      if (!S.current) {
+        S.current = {
+          lines: [{ notes: [], lyric: '' }],
+          cursor: { line: 0, pos: 0 },
+          lastLiveNote: null,
+          player: { events: [], idx: 0, timer: null, playing: false },
+          playingPos: null,
+          playingTagKey: null,
+        };
+      }
+      const s = S.current;
+
+      const [soundType, setSoundTypeState] = useState(loadSoundPref());
+      const soundTypeRef = useRef(soundType);
+      const [bpm, setBpm] = useState(100);
+      const bpmRef = useRef(100);
+      const [savedSongs, setSavedSongs] = useState(loadSavedSongs());
+      const [currentSongName, setCurrentSongName] = useState(null);
+      const [tuneValue, setTuneValue] = useState('');
+      const [lyricMode, setLyricMode] = useState(false);
+      const [lyricSel, setLyricSel] = useState(null);
+      const [micRunning, setMicRunning] = useState(false);
+      const [tip, setTip] = useState(null);
+
+      const barRefs = useRef([]);
+      const padRef = useRef(null);
+      const fileInputRef = useRef(null);
+
+      useEffect(() => { document.body.dataset.material = soundType; }, [soundType]);
+
+      // ---------- pad mutation helpers (mutate the ref, then re-render) ----------
+      function scrollAfterRender(target) { s.scrollTarget = target; forceUpdate(); }
+
+      function strike(i) {
+        playNote(i, soundTypeRef.current, barRefs.current);
+        finishPlayback();
+        const now = performance.now();
+        const atEnd = s.cursor.line === s.lines.length - 1 && s.cursor.pos === s.lines[s.cursor.line].notes.length;
+        const continuesLive = atEnd && s.lastLiveNote && s.lastLiveNote.note === s.lines[s.cursor.line].notes[s.cursor.pos - 1];
+        if (continuesLive) {
+          const gapSec = (now - s.lastLiveNote.time) / 1000;
+          s.lastLiveNote.note.sec = clamp(gapSec, MIN_LIVE_GAP_SEC, MAX_PAUSE_SEC);
+          if (gapSec > PHRASE_BREAK_SEC) {
+            s.lines.push({ notes: [], lyric: '' });
+            s.cursor = { line: s.lines.length - 1, pos: 0 };
           }
-          if (detected.length >= 48) break; // keep it toy-sized
         }
-        if (detected.length === 0) {
-          alert("Couldn't find a clear melody. Songs with many instruments are hard to read; try a hummed or a cappella recording.");
+        const note = { i, sec: QUARTER_SEC };
+        invalidateTagsAt(s.lines[s.cursor.line], s.cursor.pos);
+        s.lines[s.cursor.line].notes.splice(s.cursor.pos, 0, note);
+        s.cursor.pos++;
+        s.lastLiveNote = atEnd ? { note, time: now } : null;
+        scrollAfterRender({ type: 'caret' });
+      }
+      function newLine() {
+        finishPlayback();
+        s.lastLiveNote = null;
+        invalidateTagsAt(s.lines[s.cursor.line], s.cursor.pos);
+        const tail = s.lines[s.cursor.line].notes.splice(s.cursor.pos);
+        stripLyricTags(tail);
+        s.lines.splice(s.cursor.line + 1, 0, { notes: tail, lyric: '' });
+        s.cursor = { line: s.cursor.line + 1, pos: 0 };
+        scrollAfterRender({ type: 'caret' });
+      }
+      function backspace() {
+        finishPlayback();
+        s.lastLiveNote = null;
+        const line = s.lines[s.cursor.line];
+        if (s.cursor.pos > 0) {
+          const n = line.notes[s.cursor.pos - 1];
+          if (dotCount(n) > 1) { n.sec -= REST_UNIT_SEC; }
+          else {
+            invalidateTagsAt(line, s.cursor.pos - 1);
+            line.notes.splice(s.cursor.pos - 1, 1);
+            s.cursor.pos--;
+          }
+        } else if (s.cursor.line > 0) {
+          const prev = s.lines[s.cursor.line - 1];
+          s.cursor = { line: s.cursor.line - 1, pos: prev.notes.length };
+          stripLyricTags(line.notes);
+          prev.notes = prev.notes.concat(line.notes);
+          s.lines.splice(s.cursor.line + 1, 1);
+        }
+        scrollAfterRender({ type: 'caret' });
+      }
+      function forwardDelete() {
+        finishPlayback();
+        s.lastLiveNote = null;
+        const line = s.lines[s.cursor.line];
+        if (s.cursor.pos < line.notes.length) {
+          const n = line.notes[s.cursor.pos];
+          if (dotCount(n) > 1) { n.sec -= REST_UNIT_SEC; }
+          else { invalidateTagsAt(line, s.cursor.pos); line.notes.splice(s.cursor.pos, 1); }
+        } else if (s.cursor.line < s.lines.length - 1) {
+          stripLyricTags(s.lines[s.cursor.line + 1].notes);
+          line.notes = line.notes.concat(s.lines[s.cursor.line + 1].notes);
+          s.lines.splice(s.cursor.line + 1, 1);
+        }
+        scrollAfterRender({ type: 'caret' });
+      }
+      function hardDelete() {
+        finishPlayback();
+        s.lastLiveNote = null;
+        const line = s.lines[s.cursor.line];
+        if (s.cursor.pos < line.notes.length) {
+          invalidateTagsAt(line, s.cursor.pos);
+          line.notes.splice(s.cursor.pos, 1);
+        } else if (s.cursor.line < s.lines.length - 1) {
+          stripLyricTags(s.lines[s.cursor.line + 1].notes);
+          line.notes = line.notes.concat(s.lines[s.cursor.line + 1].notes);
+          s.lines.splice(s.cursor.line + 1, 1);
+        }
+        scrollAfterRender({ type: 'caret' });
+      }
+      function addDot() {
+        if (s.cursor.pos === 0) return;
+        finishPlayback();
+        s.lastLiveNote = null;
+        s.lines[s.cursor.line].notes[s.cursor.pos - 1].sec += REST_UNIT_SEC;
+        scrollAfterRender({ type: 'caret' });
+      }
+      function moveCursor(key) {
+        const len = () => s.lines[s.cursor.line].notes.length;
+        if (key === 'ArrowLeft') {
+          if (s.cursor.pos > 0) s.cursor.pos--;
+          else if (s.cursor.line > 0) { s.cursor.line--; s.cursor.pos = len(); }
+        } else if (key === 'ArrowRight') {
+          if (s.cursor.pos < len()) s.cursor.pos++;
+          else if (s.cursor.line < s.lines.length - 1) { s.cursor.line++; s.cursor.pos = 0; }
+        } else if (key === 'ArrowUp') {
+          if (s.cursor.line > 0) { s.cursor.line--; s.cursor.pos = Math.min(s.cursor.pos, len()); }
+          else s.cursor.pos = 0;
+        } else if (key === 'ArrowDown') {
+          if (s.cursor.line < s.lines.length - 1) { s.cursor.line++; s.cursor.pos = Math.min(s.cursor.pos, len()); }
+          else s.cursor.pos = len();
+        } else if (key === 'Home') { s.cursor.pos = 0; }
+        else if (key === 'End') { s.cursor.pos = len(); }
+        scrollAfterRender({ type: 'caret' });
+      }
+
+      // ---------- lyric linking ----------
+      function armNote(li, ni) {
+        setLyricSel(prev => {
+          if (!prev || prev.line !== li) return { line: li, start: ni, end: ni };
+          return { line: li, start: Math.min(prev.start, ni), end: Math.max(prev.end, ni) };
+        });
+      }
+      function placeCursor(li, ni) {
+        s.cursor = { line: li, pos: ni + 1 };
+        scrollAfterRender({ type: 'caret' });
+      }
+      function onLinkSelection(li, charStart, charEnd) {
+        setLyricSel(sel => {
+          if (!sel || sel.line !== li) return sel;
+          linkLyricSelection(s.lines[li], sel.start, sel.end, charStart, charEnd);
+          forceUpdate();
+          return null;
+        });
+      }
+      function onUnlink(li, noteIdx) {
+        stripLyricTags([s.lines[li].notes[noteIdx]]);
+        forceUpdate();
+      }
+      function onRowClick(li) {
+        if (lyricMode) { setLyricSel(null); return; }
+        s.cursor = { line: li, pos: s.lines[li].notes.length };
+        scrollAfterRender({ type: 'caret' });
+      }
+      function toggleLyricMode() {
+        setLyricMode(v => !v);
+        setLyricSel(null);
+      }
+
+      // ---------- playback ----------
+      function buildEvents() {
+        const evs = [];
+        s.lines.forEach((line, li) => {
+          line.notes.forEach((n, ni) => evs.push({ li, ni, rest: !!n.rest, i: n.i, sec: n.sec }));
+        });
+        return evs;
+      }
+      function clearPlayingHighlight() { s.playingPos = null; s.playingTagKey = null; }
+      function step() {
+        if (s.player.idx >= s.player.events.length) { finishPlayback(); return; }
+        const ev = s.player.events[s.player.idx];
+        const speed = bpmRef.current / 100;
+        const durMs = ev.sec * 1000 / speed;
+        if (!ev.rest) playNote(ev.i, soundTypeRef.current, barRefs.current, 0, durMs * 0.9);
+        clearPlayingHighlight();
+        s.playingPos = { li: ev.li, ni: ev.ni };
+        const tag = collectLineTags(s.lines[ev.li]).find(t => ev.ni >= t.noteIdx && ev.ni <= t.noteIdx + t.noteSpan - 1);
+        if (tag) s.playingTagKey = ev.li + '-' + tag.noteIdx;
+        s.player.idx++;
+        s.player.timer = setTimeout(step, durMs);
+        scrollAfterRender({ type: 'pos', key: ev.li + '-' + ev.ni });
+      }
+      function startOrResume() {
+        if (s.player.playing) return;
+        if (s.player.idx === 0) s.player.events = buildEvents();
+        if (s.player.events.length === 0) return;
+        s.player.playing = true;
+        step();
+      }
+      function pausePlayback() {
+        clearTimeout(s.player.timer);
+        s.player.playing = false;
+        forceUpdate();
+      }
+      function finishPlayback() {
+        clearTimeout(s.player.timer);
+        s.player.playing = false;
+        s.player.idx = 0;
+        clearPlayingHighlight();
+        forceUpdate();
+      }
+
+      // scroll effect: runs after each commit, once
+      useEffect(() => {
+        const target = s.scrollTarget;
+        s.scrollTarget = null;
+        if (!target || !padRef.current) return;
+        if (target.type === 'caret') {
+          const el = padRef.current.querySelector('.caret');
+          if (el) el.scrollIntoView({ block: 'nearest' });
+        } else if (target.type === 'pos') {
+          const el = padRef.current.querySelector(`[data-pos="${target.key}"]`);
+          if (el) el.scrollIntoView({ block: 'nearest' });
+        }
+      });
+
+      // ---------- songs / examples ----------
+      function setCurrentSong(name) { setCurrentSongName(name); }
+      function selectTuneOption(kind, name) { setTuneValue(kind ? kind + ':' + name : ''); }
+
+      function doClear() {
+        finishPlayback();
+        s.lastLiveNote = null;
+        s.lines = [{ notes: [], lyric: '' }];
+        s.cursor = { line: 0, pos: 0 };
+        setCurrentSong(null);
+        selectTuneOption(null);
+        scrollAfterRender({ type: 'caret' });
+      }
+      function onTuneChange(e) {
+        const value = e.target.value;
+        setTuneValue(value);
+        if (!value) return;
+        const [kind, name] = [value.slice(0, value.indexOf(':')), value.slice(value.indexOf(':') + 1)];
+        finishPlayback();
+        s.lastLiveNote = null;
+        if (kind === 'song') {
+          s.lines = cloneLines(savedSongs[name].lines);
+          setCurrentSong(name);
         } else {
-          loadDetected(detected);
+          s.lines = EXAMPLES[name].map(l => ({ notes: parseLine(l.n), lyric: l.t || '' }));
+          setCurrentSong(null);
         }
-      } catch (err) {
-        alert("Couldn't read that audio file. MP3 or WAV work best.");
+        s.cursor = { line: s.lines.length - 1, pos: s.lines[s.lines.length - 1].notes.length };
+        scrollAfterRender({ type: 'caret' });
+        e.target.blur();
       }
-      fileInput.value = '';
-    });
+      function saveSong() {
+        if (!hasNotes(s.lines)) { alert('Play or write some notes before saving a song.'); return; }
+        const name = prompt('Song name:', currentSongName || '');
+        if (name === null) return;
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        if (savedSongs[trimmed] && trimmed !== currentSongName) {
+          if (!confirm(`"${trimmed}" already exists. Overwrite it?`)) return;
+        }
+        const next = { ...savedSongs, [trimmed]: { lines: cloneLines(s.lines) } };
+        setSavedSongs(next);
+        persistSavedSongs(next);
+        setCurrentSong(trimmed);
+        selectTuneOption('song', trimmed);
+      }
+      function deleteSong() {
+        if (!currentSongName) return;
+        if (!confirm(`Delete "${currentSongName}"?`)) return;
+        const next = { ...savedSongs };
+        delete next[currentSongName];
+        setSavedSongs(next);
+        persistSavedSongs(next);
+        setCurrentSong(null);
+        selectTuneOption(null);
+        finishPlayback();
+        s.lastLiveNote = null;
+        s.lines = [{ notes: [], lyric: '' }];
+        s.cursor = { line: 0, pos: 0 };
+        scrollAfterRender({ type: 'caret' });
+      }
+      function loadDetected(detected) {
+        finishPlayback();
+        s.lastLiveNote = null;
+        s.lines = [{ notes: [], lyric: '' }];
+        setCurrentSong(null);
+        selectTuneOption(null);
+        detected.forEach((d, k) => {
+          const next = detected[k + 1];
+          const gap = next ? next.t - d.t : QUARTER_SEC;
+          if (s.lines[s.lines.length - 1].notes.length >= 8) s.lines.push({ notes: [], lyric: '' });
+          s.lines[s.lines.length - 1].notes.push({ i: d.i, sec: clamp(gap, MIN_LIVE_GAP_SEC, MAX_PAUSE_SEC) });
+          if (next && gap > PHRASE_BREAK_SEC) s.lines.push({ notes: [], lyric: '' });
+        });
+        s.cursor = { line: s.lines.length - 1, pos: s.lines[s.lines.length - 1].notes.length };
+        scrollAfterRender({ type: 'caret' });
+      }
 
-    // The legend bar wraps to more lines on narrow screens, so its height
-    // isn't fixed - keep the body's bottom padding in sync so it never
-    // covers page content.
-    const legendBar = document.querySelector('.legend-bar');
-    function syncLegendPadding() {
-      document.body.style.paddingBottom = (legendBar.offsetHeight + 14) + 'px';
+      // ---------- mic humming ----------
+      const micStateRef = useRef({ stream: null, analyser: null, raf: null, lastNote: -1, stableCount: 0, lastAddTime: 0, lastNoteRef: null });
+      async function startMic() {
+        let stream;
+        try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+        catch { alert("Couldn't access the microphone. Check the browser's permission settings."); return; }
+        const ac = ctx();
+        const micSource = ac.createMediaStreamSource(stream);
+        const analyser = ac.createAnalyser();
+        analyser.fftSize = 2048;
+        micSource.connect(analyser);
+        const m = micStateRef.current;
+        m.stream = stream; m.analyser = analyser;
+        m.lastNote = -1; m.stableCount = 0; m.lastAddTime = 0; m.lastNoteRef = null;
+        setMicRunning(true);
+        finishPlayback();
+        s.lastLiveNote = null;
+        s.lines = [{ notes: [], lyric: '' }];
+        s.cursor = { line: 0, pos: 0 };
+        setCurrentSong(null);
+        selectTuneOption(null);
+        scrollAfterRender({ type: 'caret' });
+        const buf = new Float32Array(analyser.fftSize);
+        function loop() {
+          const mm = micStateRef.current;
+          if (!mm.stream) return;
+          mm.analyser.getFloatTimeDomainData(buf);
+          const freq = autoCorrelate(buf, ac.sampleRate);
+          if (freq > 0 && freq < 1200) {
+            const idx = freqToNoteIndex(freq);
+            if (idx === mm.lastNote) { mm.stableCount++; } else { mm.lastNote = idx; mm.stableCount = 1; }
+            const now = performance.now();
+            if (mm.stableCount === 4 && now - mm.lastAddTime > 280) {
+              if (mm.lastNoteRef) {
+                const gapSec = (now - mm.lastAddTime) / 1000;
+                mm.lastNoteRef.sec = clamp(gapSec, MIN_LIVE_GAP_SEC, MAX_PAUSE_SEC);
+                if (gapSec > PHRASE_BREAK_SEC) s.lines.push({ notes: [], lyric: '' });
+              }
+              const cur = s.lines[s.lines.length - 1];
+              if (cur.notes.length >= 8) s.lines.push({ notes: [], lyric: '' });
+              const note = { i: idx, sec: QUARTER_SEC };
+              s.lines[s.lines.length - 1].notes.push(note);
+              mm.lastNoteRef = note;
+              s.cursor = { line: s.lines.length - 1, pos: s.lines[s.lines.length - 1].notes.length };
+              scrollAfterRender({ type: 'caret' });
+              playNote(idx, soundTypeRef.current, barRefs.current);
+              mm.lastAddTime = now;
+            }
+          }
+          mm.raf = requestAnimationFrame(loop);
+        }
+        loop();
+      }
+      function stopMic() {
+        const m = micStateRef.current;
+        if (m.raf) cancelAnimationFrame(m.raf);
+        if (m.stream) m.stream.getTracks().forEach(t => t.stop());
+        m.stream = null;
+        setMicRunning(false);
+      }
+      function onMicClick() { micRunning ? stopMic() : startMic(); }
+
+      async function onFileChange(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+          const ac = ctx();
+          const arrayBuf = await file.arrayBuffer();
+          const audioBuf = await ac.decodeAudioData(arrayBuf);
+          const channel = audioBuf.getChannelData(0);
+          const sr = audioBuf.sampleRate;
+          const winSize = 2048, hop = 1024;
+          const detected = [];
+          let lastN = -1, stable = 0;
+          for (let start = 0; start + winSize < channel.length; start += hop) {
+            const frame = channel.subarray(start, start + winSize);
+            const freq = autoCorrelate(frame, sr);
+            if (freq > 60 && freq < 1200) {
+              const idx = freqToNoteIndex(freq);
+              if (idx === lastN) { stable++; } else { lastN = idx; stable = 1; }
+              if (stable === 3) {
+                const t = start / sr;
+                if (detected.length === 0 || detected[detected.length - 1].i !== idx) detected.push({ i: idx, t });
+              }
+            } else { lastN = -1; stable = 0; }
+            if (detected.length >= 48) break;
+          }
+          if (detected.length === 0) {
+            alert("Couldn't find a clear melody. Songs with many instruments are hard to read; try a hummed or a cappella recording.");
+          } else {
+            loadDetected(detected);
+          }
+        } catch (err) {
+          alert("Couldn't read that audio file. MP3 or WAV work best.");
+        }
+        e.target.value = '';
+      }
+
+      // ---------- keyboard ----------
+      useEffect(() => {
+        function onKeyDown(e) {
+          const tagName = e.target.tagName;
+          if (tagName === 'INPUT' || tagName === 'SELECT' || tagName === 'TEXTAREA' || tagName === 'BUTTON') return;
+          if (e.target.isContentEditable) return;
+          if (e.target.classList && e.target.classList.contains('bar') && (e.key === 'Enter' || e.key === ' ')) return;
+          if (lyricMode) {
+            if (e.key === 'Escape' && lyricSel) { e.preventDefault(); setLyricSel(null); }
+            return;
+          }
+          if (e.key >= '1' && e.key <= '8') { if (!e.repeat) strike(+e.key - 1); }
+          else if (e.key === 'Enter') { if (!e.repeat) newLine(); }
+          else if (e.key === 'Backspace') { e.preventDefault(); backspace(); }
+          else if (e.key === 'Delete' && e.shiftKey) { e.preventDefault(); hardDelete(); }
+          else if (e.key === 'Delete') { forwardDelete(); }
+          else if (e.key === ' ' || e.key === '.') { e.preventDefault(); addDot(); }
+          else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) {
+            e.preventDefault();
+            moveCursor(e.key);
+          }
+        }
+        document.addEventListener('keydown', onKeyDown);
+        return () => document.removeEventListener('keydown', onKeyDown);
+      });
+
+      // legend bar height sync (keeps body padding clear of the fixed footer)
+      const legendRef = useRef(null);
+      useEffect(() => {
+        function sync() { if (legendRef.current) document.body.style.paddingBottom = (legendRef.current.offsetHeight + 14) + 'px'; }
+        sync();
+        window.addEventListener('resize', sync);
+        return () => window.removeEventListener('resize', sync);
+      });
+
+      const empty = s.lines.length === 1 && s.lines[0].notes.length === 0;
+      const playing = s.player.playing;
+      const playLabel = playing ? '⏸ Pause' : (s.player.idx > 0 ? '▶ Resume' : '▶ Play');
+      const noNotes = !hasNotes(s.lines);
+
+      const savedNames = Object.keys(savedSongs).sort((a, b) => a.localeCompare(b));
+
+      return html`
+        <div class="max-w-[1120px] mx-auto">
+          <header class="flex items-center justify-between gap-3 flex-wrap mb-3.5">
+            <h1 class="text-[18px] font-bold m-0 tracking-[.2px]">Tune to Xylophone</h1>
+            <div class="flex gap-2 flex-wrap items-center">
+              <button class=${cx(BTN, micRunning && BTN_DANGER)} onClick=${onMicClick}>${micRunning ? '⏹ Stop' : '🎤 Hum it'}</button>
+              <button class=${BTN} onClick=${() => fileInputRef.current.click()}>📁 Upload</button>
+              <input ref=${fileInputRef} type="file" accept="audio/*" class="hidden" onChange=${onFileChange} />
+              <select class="font-semibold text-[13px] px-2.5 py-[7px] rounded-lg border border-[#3a3d42] bg-[#35383d] text-[#e8eaed]"
+                value=${tuneValue} onChange=${onTuneChange}>
+                <option value="">Pick a tune…</option>
+                <optgroup label="Built-in">
+                  ${Object.keys(EXAMPLES).map(name => html`<option key=${name} value=${'example:' + name}>${name}</option>`)}
+                </optgroup>
+                ${savedNames.length ? html`<optgroup label="My Songs">
+                  ${savedNames.map(name => html`<option key=${name} value=${'song:' + name}>${name}</option>`)}
+                </optgroup>` : null}
+              </select>
+            </div>
+          </header>
+
+          <div class="grid grid-cols-1 min-[880px]:grid-cols-2 gap-4 items-start">
+            <section class="order-1 min-[880px]:order-2 bg-[#2a2d31] border border-[#3a3d42] rounded-[10px] p-3">
+              <div class="flex items-start justify-between gap-2 flex-wrap mb-2.5">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <button class=${cx(BTN, BTN_PRIMARY)} disabled=${noNotes}
+                    onClick=${(e) => { e.currentTarget.blur(); playing ? pausePlayback() : startOrResume(); }}>${playLabel}</button>
+                  <button class=${BTN} disabled=${noNotes} title="Restart from the beginning" aria-label="Restart"
+                    onClick=${(e) => { e.currentTarget.blur(); finishPlayback(); startOrResume(); }}>⏮</button>
+                  <button class=${BTN} onClick=${doClear}>✕ Clear</button>
+                  <button class=${cx(BTN, lyricMode && BTN_PRIMARY)} title="Tag notes with lyrics" onClick=${toggleLyricMode}>📝 Lyrics</button>
+                  <div class="flex items-center gap-1.5 text-[13px]">
+                    <span class="font-semibold min-w-[50px]">Speed ${bpm}%</span>
+                    <input type="range" min="50" max="200" step="10" value=${bpm} class="w-[90px] accent-[#12897e]"
+                      onInput=${(e) => { const v = +e.target.value; bpmRef.current = v; setBpm(v); }} />
+                  </div>
+                </div>
+                <button class=${cx(BTN, BTN_DANGER)} disabled=${!currentSongName} title="Delete the loaded song" onClick=${deleteSong}>🗑 Delete</button>
+              </div>
+              <div ref=${padRef} class="min-h-[420px] max-h-[520px] overflow-y-auto px-1 py-0.5">
+                ${s.lines.map((line, li) => html`<${PadLine} key=${li} line=${line} li=${li} cursor=${s.cursor}
+                  lyricMode=${lyricMode} lyricSel=${lyricSel} playingPos=${s.playingPos} playingTagKey=${s.playingTagKey}
+                  empty=${empty && li === 0}
+                  onArmNote=${armNote} onPlaceCursor=${placeCursor}
+                  onSetGapSec=${(li2, ni2, sec) => { if (lyricMode) return; finishPlayback(); s.lastLiveNote = null; s.lines[li2].notes[ni2].sec = sec; forceUpdate(); }}
+                  onGrowGap=${(li2, ni2) => { if (lyricMode) return; finishPlayback(); s.lastLiveNote = null; s.lines[li2].notes[ni2].sec += REST_UNIT_SEC; forceUpdate(); }}
+                  onTip=${(x, y, text) => setTip({ x, y, text })} onHideTip=${() => setTip(null)}
+                  onLinkSelection=${onLinkSelection} onUnlink=${onUnlink} onCaptionDone=${forceUpdate}
+                  onRowClick=${onRowClick} />`)}
+              </div>
+              <div class="flex justify-end mt-2.5">
+                <button class=${BTN} onClick=${saveSong}>💾 Save</button>
+              </div>
+            </section>
+
+            <section class="order-2 min-[880px]:order-1 flex flex-col justify-center items-center gap-5 min-h-[520px]">
+              <${Xylophone} barRefs=${barRefs} onStrike=${strike} />
+              <${SoundToggle} soundType=${soundType} onChange=${(v) => { soundTypeRef.current = v; saveSoundPref(v); setSoundTypeState(v); }} />
+            </section>
+          </div>
+
+          <${GapTooltip} tip=${tip} />
+
+          <footer ref=${legendRef} class="fixed inset-x-0 bottom-0 bg-[#2a2d31] border-t border-[#3a3d42] px-4 py-2.5 text-[12.5px] text-[#9aa0a6] leading-[1.7] text-center shadow-[0_-6px_16px_rgba(0,0,0,.35)] z-40">
+            <kbd class="font-bold text-[11px] bg-[#43474d] border border-[#52565d] rounded px-1.5 py-0.5 text-[#e8eaed]">1</kbd>–<kbd class="font-bold text-[11px] bg-[#43474d] border border-[#52565d] rounded px-1.5 py-0.5 text-[#e8eaed]">8</kbd> write a note · 
+            <kbd class="font-bold text-[11px] bg-[#43474d] border border-[#52565d] rounded px-1.5 py-0.5 text-[#e8eaed]">Enter</kbd> new line · 
+            <kbd class="font-bold text-[11px] bg-[#43474d] border border-[#52565d] rounded px-1.5 py-0.5 text-[#e8eaed]">⌫</kbd> delete a dot, or the note once its dots run out · 
+            <kbd class="font-bold text-[11px] bg-[#43474d] border border-[#52565d] rounded px-1.5 py-0.5 text-[#e8eaed]">Space</kbd>/<kbd class="font-bold text-[11px] bg-[#43474d] border border-[#52565d] rounded px-1.5 py-0.5 text-[#e8eaed]">.</kbd> add a dot · 
+            <kbd class="font-bold text-[11px] bg-[#43474d] border border-[#52565d] rounded px-1.5 py-0.5 text-[#e8eaed]">⇧</kbd><kbd class="font-bold text-[11px] bg-[#43474d] border border-[#52565d] rounded px-1.5 py-0.5 text-[#e8eaed]">Del</kbd> delete a note and its dots · arrow keys or click to move the cursor
+            <div class="mt-1 italic text-[#9aa0a6]">The dots after each note are the gap before the next one (hover for the exact
+              time). Click past the dots to add one, click a dot to cut the gap back to that point. Play bars one
+              after another at the end of the pad and your real timing is recorded automatically, pause more than a
+              beat and a new line starts on its own. Turn on 📝 Lyrics to type or edit the words below a line, then
+              click a note (click more to grow the group) and drag-select the matching word(s) to link them - the
+              linked word lights up when its note plays. Click a linked word to unlink it,
+              <kbd class="font-bold text-[11px] bg-[#43474d] border border-[#52565d] rounded px-1.5 py-0.5 text-[#e8eaed]">Esc</kbd> to drop an armed note selection.</div>
+          </footer>
+        </div>`;
     }
-    syncLegendPadding();
-    window.addEventListener('resize', syncLegendPadding);
 
-    renderPad();
+    ReactDOM.createRoot(document.getElementById('root')).render(html`<${App} />`);
   </script>
 </body>
 
