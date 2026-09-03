@@ -11,14 +11,22 @@
   <script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.js"></script>
   <style>
     :root {
-      --c1: #d63c30; /* C  red */
-      --c2: #ee9421; /* D  orange */
-      --c3: #e6bd1c; /* E  gold */
-      --c4: #4ba54f; /* F  green */
-      --c5: #12897e; /* G  teal */
-      --c6: #189ad3; /* A  blue */
-      --c7: #6a3fae; /* B  purple */
-      --c8: #d84941; /* C' red */
+      --c1: #d63c30;
+      /* C  red */
+      --c2: #ee9421;
+      /* D  orange */
+      --c3: #e6bd1c;
+      /* E  gold */
+      --c4: #4ba54f;
+      /* F  green */
+      --c5: #12897e;
+      /* G  teal */
+      --c6: #189ad3;
+      /* A  blue */
+      --c7: #6a3fae;
+      /* B  purple */
+      --c8: #d84941;
+      /* C' red */
     }
 
     /* Wood material: swaps the rainbow bar/chip palette for an oak-to-walnut gradient. */
@@ -43,27 +51,77 @@
       box-shadow: 0 3px 8px rgba(0, 0, 0, .4), inset 0 1px 0 rgba(255, 255, 255, .15);
     }
 
-    .bar.active { filter: brightness(1.35); transform: scale(.97); }
-    .chip.playing { outline: 2px solid #fff; transform: scale(1.12); }
-    .chip.lyric-linked { border-bottom: 3px solid var(--c5); }
-    .chip.lyric-selecting { outline: 2px dashed #fff; outline-offset: 1px; }
-    .lyric-tagged { border-bottom: 2px solid var(--c5); }
-    .lyric-tagged.playing { background: var(--c5); color: #fff; border-radius: 3px; padding: 0 2px; }
-    .lyric-editable:empty::before { content: 'Click to add lyrics…'; opacity: .5; font-style: italic; }
+    .bar.active {
+      filter: brightness(1.35);
+      transform: scale(.97);
+    }
 
-    .caret { display: inline-block; width: 2px; height: 18px; background: #e8eaed; animation: blink 1.1s steps(1) infinite; }
-    @keyframes blink { 50% { opacity: 0; } }
+    .chip.playing {
+      outline: 2px solid #fff;
+      transform: scale(1.12);
+    }
+
+    .chip.lyric-linked {
+      border-bottom: 3px solid var(--c5);
+    }
+
+    .chip.lyric-selecting {
+      outline: 2px dashed #fff;
+      outline-offset: 1px;
+    }
+
+    .lyric-tagged {
+      border-bottom: 2px solid var(--c5);
+    }
+
+    .lyric-tagged.playing {
+      background: var(--c5);
+      color: #fff;
+      border-radius: 3px;
+      padding: 0 2px;
+    }
+
+    .lyric-editable:empty::before {
+      content: 'Click to add lyrics…';
+      opacity: .5;
+      font-style: italic;
+    }
+
+    .caret {
+      display: inline-block;
+      width: 2px;
+      height: 18px;
+      background: #e8eaed;
+      animation: blink 1.1s steps(1) infinite;
+    }
+
+    @keyframes blink {
+      50% {
+        opacity: 0;
+      }
+    }
 
     @media (prefers-reduced-motion: reduce) {
-      * { transition: none !important; animation: none !important; }
-      .bar.active, .chip.playing { transform: none; }
-      .caret { opacity: 1; }
+      * {
+        transition: none !important;
+        animation: none !important;
+      }
+
+      .bar.active,
+      .chip.playing {
+        transform: none;
+      }
+
+      .caret {
+        opacity: 1;
+      }
     }
   </style>
 </head>
 
-<body class="m-0 min-h-screen bg-[#212326] text-[#e8eaed] [font-family:-apple-system,'Segoe_UI',Roboto,sans-serif] px-4 pt-[18px]">
-  <div id="root"></div>
+<body
+  class="m-0 h-screen overflow-hidden bg-[#212326] text-[#e8eaed] [font-family:-apple-system,'Segoe_UI',Roboto,sans-serif] px-4 py-[14px] flex flex-col">
+  <div id="root" class="flex-1 min-h-0 flex flex-col"></div>
 
   <script>
     const html = htm.bind(React.createElement);
@@ -352,7 +410,27 @@
     const BTN = "font-semibold text-[13px] border border-[#3a3d42] rounded-lg px-[13px] py-[7px] cursor-pointer text-[#e8eaed] bg-[#35383d] hover:bg-[#3f434a] active:translate-y-px disabled:opacity-45 disabled:cursor-not-allowed transition-colors";
     const BTN_PRIMARY = "bg-[#12897e] border-transparent hover:bg-[#0f9c8f]";
     const BTN_DANGER = "bg-[#a83a32] border-transparent hover:bg-[#c2443a]";
+    const BTN_ICON_DANGER = "font-semibold text-[12px] border border-transparent rounded-lg px-2 py-1 cursor-pointer text-white bg-[#a83a32] hover:bg-[#c2443a] active:translate-y-px disabled:opacity-45 disabled:cursor-not-allowed transition-colors shadow-[0_2px_6px_rgba(0,0,0,.35)]";
+    const KBD = "font-bold text-[11px] bg-[#43474d] border border-[#52565d] rounded px-1.5 py-0.5 text-[#e8eaed]";
     const cx = (...xs) => xs.filter(Boolean).join(' ');
+
+    // ---------- Help dialog content: keyboard shortcuts and usage tips ----------
+    const SHORTCUTS = [
+      { seq: [{ k: '1' }, { t: '–' }, { k: '8' }], desc: 'Write a note' },
+      { seq: [{ k: 'Enter' }], desc: 'Start a new line' },
+      { seq: [{ k: '←' }, { k: '→' }, { k: '↑' }, { k: '↓' }], desc: 'Move the cursor (or click)' },
+      { seq: [{ k: '⌫' }], desc: 'Delete a dot, or the note once its dots run out' },
+      { seq: [{ k: '⇧' }, { k: 'Del' }], desc: 'Delete a note and all its dots' },
+      { seq: [{ k: 'Space' }, { t: '/' }, { k: '.' }], desc: 'Add a dot (extend the gap)' },
+      { seq: [{ k: 'Esc' }], desc: 'Drop an armed lyric selection' },
+    ];
+    const TIPS = [
+      'The dots after a note are the gap before the next one. Hover over them to see the exact time.',
+      'Click past the dots to add one; click a dot to cut the gap back to that point.',
+      'Play notes one after another at the end of the pad and your real timing is captured automatically; pause more than a beat and a new line starts on its own.',
+      'Turn on 📝 Lyrics to type or edit the words below a line, then click a note (click more to grow the group) and drag-select the matching word(s) to link them – the linked word lights up when its note plays.',
+      'Click a linked word to unlink it.',
+    ];
 
     function Bar({ note, index, barRef, onStrike }) {
       return html`
@@ -383,8 +461,8 @@
       const opt = (id, label) => html`
         <button type="button" key=${id}
           class=${cx("font-semibold text-[13px] border-0 px-3 py-[7px] cursor-pointer transition-colors",
-            id !== 'wood' && "border-r border-[#3a3d42]",
-            soundType === id ? "bg-[#12897e] text-white" : "text-[#9aa0a6] bg-[#35383d] hover:bg-[#3f434a]")}
+        id !== 'wood' && "border-r border-[#3a3d42]",
+        soundType === id ? "bg-[#12897e] text-white" : "text-[#9aa0a6] bg-[#35383d] hover:bg-[#3f434a]")}
           onClick=${() => onChange(id)}>${label}</button>`;
       return html`
         <div class="flex border border-[#3a3d42] rounded-lg overflow-hidden" role="group" aria-label="Bar material">
@@ -402,21 +480,21 @@
         <span class="inline-flex items-center text-[#6f7479] text-[15px] font-bold tracking-[1px] cursor-pointer pr-1.5 pl-0.5 py-0.5 rounded-md hover:bg-[#35383d] hover:text-[#9aa0a6]"
           data-pos=${n.rest ? (li + '-' + ni) : undefined}
           onPointerMove=${(e) => {
-            const dot = e.target.closest('[data-step]');
-            const steps = dot ? +dot.dataset.step : count + 1;
-            const cur = count * REST_UNIT_SEC;
-            const delta = steps * REST_UNIT_SEC - cur;
-            const text = delta === 0 ? cur.toFixed(1) + 's'
-              : cur.toFixed(1) + (delta > 0 ? '+' : '-') + Math.abs(delta).toFixed(1) + 's';
-            onTip(e.clientX, e.currentTarget.getBoundingClientRect().top, text);
-          }}
+          const dot = e.target.closest('[data-step]');
+          const steps = dot ? +dot.dataset.step : count + 1;
+          const cur = count * REST_UNIT_SEC;
+          const delta = steps * REST_UNIT_SEC - cur;
+          const text = delta === 0 ? cur.toFixed(1) + 's'
+            : cur.toFixed(1) + (delta > 0 ? '+' : '-') + Math.abs(delta).toFixed(1) + 's';
+          onTip(e.clientX, e.currentTarget.getBoundingClientRect().top, text);
+        }}
           onPointerLeave=${onHideTip}
           onPointerDown=${(e) => {
-            if (e.target !== e.currentTarget) return;
-            e.stopPropagation();
-            if (lyricMode) return;
-            onGrow();
-          }}
+          if (e.target !== e.currentTarget) return;
+          e.stopPropagation();
+          if (lyricMode) return;
+          onGrow();
+        }}
         >${dots.map(d => html`
           <span key=${d} data-step=${d + 1}
             onPointerDown=${(e) => { e.stopPropagation(); if (lyricMode) return; onSetSec((d + 1) * REST_UNIT_SEC); }}
@@ -428,7 +506,7 @@
       return html`
         <div
           class=${cx("chip w-6 h-6 rounded-md flex items-center justify-center text-[12.5px] font-bold text-white [text-shadow:0_1px_2px_rgba(0,0,0,.35)] flex-none cursor-pointer",
-            linked && "lyric-linked", selected && "lyric-selecting", playing && "playing")}
+        linked && "lyric-linked", selected && "lyric-selecting", playing && "playing")}
           style=${{ background: NOTES[n.i].color }}
           data-pos=${li + '-' + ni}
           onPointerDown=${(e) => { e.stopPropagation(); lyricMode ? onArm(li, ni) : onPlace(li, ni); }}
@@ -482,7 +560,7 @@
       return html`
         <div ref=${wrapRef}
           class=${cx("lyric text-[11.5px] text-[#84898e] italic mt-[3px]",
-            lyricMode && "lyric-editable not-italic outline outline-1 outline-dashed outline-[#3a3d42] outline-offset-[3px] rounded cursor-text min-h-[14px]")}
+        lyricMode && "lyric-editable not-italic outline outline-1 outline-dashed outline-[#3a3d42] outline-offset-[3px] rounded cursor-text min-h-[14px]")}
           contentEditable=${lyricMode}
           suppressContentEditableWarning=${true}
           onPointerDown=${lyricMode ? (e) => e.stopPropagation() : undefined}
@@ -530,6 +608,38 @@
         document.body);
     }
 
+    function HelpDialog({ dialogRef }) {
+      return html`
+        <dialog ref=${dialogRef}
+          class="bg-[#2a2d31] text-[#e8eaed] border border-[#3a3d42] rounded-[12px] p-0 max-w-[520px] w-[92vw] shadow-[0_20px_50px_rgba(0,0,0,.5)] [&::backdrop]:bg-black/60"
+          onClick=${(e) => { if (e.target === e.currentTarget) e.currentTarget.close(); }}>
+          <div class="p-5">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-[16px] font-bold m-0">Help & shortcuts</h2>
+              <button type="button" aria-label="Close"
+                class="text-[#9aa0a6] hover:text-[#e8eaed] text-[22px] leading-none border-0 bg-transparent cursor-pointer p-0"
+                onClick=${(e) => e.currentTarget.closest('dialog').close()}>×</button>
+            </div>
+
+            <h3 class="text-[11.5px] uppercase tracking-wide text-[#84898e] font-bold mb-2 mt-0">Keyboard shortcuts</h3>
+            <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-[13px] m-0 mb-5">
+              ${SHORTCUTS.map((row, ri) => html`
+                <dt key=${'k' + ri} class="flex gap-1 items-center flex-wrap m-0">
+                  ${row.seq.map((tok, ti) => tok.k
+        ? html`<kbd key=${ti} class=${KBD}>${tok.k}</kbd>`
+        : html`<span key=${ti} class="text-[#6f7479] px-0.5">${tok.t}</span>`)}
+                </dt>
+                <dd key=${'d' + ri} class="m-0 text-[#cfd2d6] self-center">${row.desc}</dd>`)}
+            </dl>
+
+            <h3 class="text-[11.5px] uppercase tracking-wide text-[#84898e] font-bold mb-2">Tips</h3>
+            <ul class="list-disc m-0 pl-[18px] text-[13px] text-[#cfd2d6] leading-[1.6] flex flex-col gap-2">
+              ${TIPS.map((tip, ti) => html`<li key=${ti}>${tip}</li>`)}
+            </ul>
+          </div>
+        </dialog>`;
+    }
+
     function App() {
       const [, bump] = useReducer(x => x + 1, 0);
       const forceUpdate = useCallback(() => bump(), []);
@@ -562,6 +672,7 @@
       const barRefs = useRef([]);
       const padRef = useRef(null);
       const fileInputRef = useRef(null);
+      const dialogRef = useRef(null);
 
       useEffect(() => { document.body.dataset.material = soundType; }, [soundType]);
 
@@ -944,6 +1055,7 @@
       // ---------- keyboard ----------
       useEffect(() => {
         function onKeyDown(e) {
+          if (dialogRef.current && dialogRef.current.open) return;
           const tagName = e.target.tagName;
           if (tagName === 'INPUT' || tagName === 'SELECT' || tagName === 'TEXTAREA' || tagName === 'BUTTON') return;
           if (e.target.isContentEditable) return;
@@ -967,15 +1079,6 @@
         return () => document.removeEventListener('keydown', onKeyDown);
       });
 
-      // legend bar height sync (keeps body padding clear of the fixed footer)
-      const legendRef = useRef(null);
-      useEffect(() => {
-        function sync() { if (legendRef.current) document.body.style.paddingBottom = (legendRef.current.offsetHeight + 14) + 'px'; }
-        sync();
-        window.addEventListener('resize', sync);
-        return () => window.removeEventListener('resize', sync);
-      });
-
       const empty = s.lines.length === 1 && s.lines[0].notes.length === 0;
       const playing = s.player.playing;
       const playLabel = playing ? '⏸ Pause' : (s.player.idx > 0 ? '▶ Resume' : '▶ Play');
@@ -984,8 +1087,8 @@
       const savedNames = Object.keys(savedSongs).sort((a, b) => a.localeCompare(b));
 
       return html`
-        <div class="max-w-[1120px] mx-auto">
-          <header class="flex items-center justify-between gap-3 flex-wrap mb-3.5">
+        <div class="h-full flex flex-col mx-auto w-full max-w-[1120px]">
+          <header class="flex items-center justify-between gap-3 flex-wrap mb-3.5 shrink-0">
             <h1 class="text-[18px] font-bold m-0 tracking-[.2px]">Tune to Xylophone</h1>
             <div class="flex gap-2 flex-wrap items-center">
               <button class=${cx(BTN, micRunning && BTN_DANGER)} onClick=${onMicClick}>${micRunning ? '⏹ Stop' : '🎤 Hum it'}</button>
@@ -1001,28 +1104,45 @@
                   ${savedNames.map(name => html`<option key=${name} value=${'song:' + name}>${name}</option>`)}
                 </optgroup>` : null}
               </select>
+              <button class=${cx(BTN, "inline-flex items-center gap-1.5")} title="Help and keyboard shortcuts" aria-label="Help and keyboard shortcuts"
+                onClick=${() => dialogRef.current.showModal()}>
+                Help
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="16" x2="12" y2="11" />
+                  <line x1="12" y1="8" x2="12.01" y2="8" />
+                </svg>
+              </button>
             </div>
           </header>
 
-          <div class="grid grid-cols-1 min-[880px]:grid-cols-2 gap-4 items-start">
-            <section class="order-1 min-[880px]:order-2 bg-[#2a2d31] border border-[#3a3d42] rounded-[10px] p-3">
-              <div class="flex items-start justify-between gap-2 flex-wrap mb-2.5">
-                <div class="flex items-center gap-2 flex-wrap">
-                  <button class=${cx(BTN, BTN_PRIMARY)} disabled=${noNotes}
-                    onClick=${(e) => { e.currentTarget.blur(); playing ? pausePlayback() : startOrResume(); }}>${playLabel}</button>
-                  <button class=${BTN} disabled=${noNotes} title="Restart from the beginning" aria-label="Restart"
-                    onClick=${(e) => { e.currentTarget.blur(); finishPlayback(); startOrResume(); }}>⏮</button>
-                  <button class=${BTN} onClick=${doClear}>✕ Clear</button>
-                  <button class=${cx(BTN, lyricMode && BTN_PRIMARY)} title="Tag notes with lyrics" onClick=${toggleLyricMode}>📝 Lyrics</button>
-                  <div class="flex items-center gap-1.5 text-[13px]">
-                    <span class="font-semibold min-w-[50px]">Speed ${bpm}%</span>
-                    <input type="range" min="50" max="200" step="10" value=${bpm} class="w-[90px] accent-[#12897e]"
-                      onInput=${(e) => { const v = +e.target.value; bpmRef.current = v; setBpm(v); }} />
-                  </div>
-                </div>
-                <button class=${cx(BTN, BTN_DANGER)} disabled=${!currentSongName} title="Delete the loaded song" onClick=${deleteSong}>🗑 Delete</button>
+          <div class="grid grid-cols-1 min-[880px]:grid-cols-2 gap-4 flex-1 min-h-0">
+            <section class="relative order-1 min-[880px]:order-2 bg-[#2a2d31] border border-[#3a3d42] rounded-[10px] p-3 flex flex-col min-h-0 h-full">
+              <button class=${cx(BTN_ICON_DANGER, "absolute top-2 right-2 z-10 inline-flex items-center")} disabled=${!currentSongName}
+                title="Delete the loaded song" aria-label="Delete the loaded song" onClick=${deleteSong}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                  <path d="M10 11v6" />
+                  <path d="M14 11v6" />
+                  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                </svg>
+              </button>
+
+              <div class="flex items-center gap-2 flex-wrap mb-2.5 pr-10 shrink-0">
+                <button class=${cx(BTN, BTN_PRIMARY)} disabled=${noNotes}
+                  onClick=${(e) => { e.currentTarget.blur(); playing ? pausePlayback() : startOrResume(); }}>${playLabel}</button>
+                <button class=${cx(BTN, "inline-flex items-center")} disabled=${noNotes} title="Restart from the beginning" aria-label="Restart"
+                  onClick=${(e) => { e.currentTarget.blur(); finishPlayback(); startOrResume(); }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" />
+                  </svg>
+                </button>
+                <button class=${BTN} onClick=${doClear}>✕ Clear</button>
+                <button class=${cx(BTN, lyricMode && BTN_PRIMARY)} title="Tag notes with lyrics" onClick=${toggleLyricMode}>📝 Lyrics</button>
               </div>
-              <div ref=${padRef} class="min-h-[420px] max-h-[520px] overflow-y-auto px-1 py-0.5">
+
+              <div ref=${padRef} class="flex-1 min-h-0 overflow-y-auto px-1 py-0.5">
                 ${s.lines.map((line, li) => html`<${PadLine} key=${li} line=${line} li=${li} cursor=${s.cursor}
                   lyricMode=${lyricMode} lyricSel=${lyricSel} playingPos=${s.playingPos} playingTagKey=${s.playingTagKey}
                   empty=${empty && li === 0}
@@ -1033,33 +1153,25 @@
                   onLinkSelection=${onLinkSelection} onUnlink=${onUnlink} onCaptionDone=${forceUpdate}
                   onRowClick=${onRowClick} />`)}
               </div>
-              <div class="flex justify-end mt-2.5">
+
+              <div class="flex items-center justify-between gap-3 mt-2.5 shrink-0">
+                <div class="flex items-center gap-1.5 text-[13px]">
+                  <span class="font-semibold min-w-[50px]">Speed ${bpm}%</span>
+                  <input type="range" min="50" max="200" step="10" value=${bpm} class="w-[90px] accent-[#12897e]"
+                    onInput=${(e) => { const v = +e.target.value; bpmRef.current = v; setBpm(v); }} />
+                </div>
                 <button class=${BTN} onClick=${saveSong}>💾 Save</button>
               </div>
             </section>
 
-            <section class="order-2 min-[880px]:order-1 flex flex-col justify-center items-center gap-5 min-h-[520px]">
+            <section class="order-2 min-[880px]:order-1 flex flex-col justify-center items-center gap-5 h-full min-h-0">
               <${Xylophone} barRefs=${barRefs} onStrike=${strike} />
               <${SoundToggle} soundType=${soundType} onChange=${(v) => { soundTypeRef.current = v; saveSoundPref(v); setSoundTypeState(v); }} />
             </section>
           </div>
 
           <${GapTooltip} tip=${tip} />
-
-          <footer ref=${legendRef} class="fixed inset-x-0 bottom-0 bg-[#2a2d31] border-t border-[#3a3d42] px-4 py-2.5 text-[12.5px] text-[#9aa0a6] leading-[1.7] text-center shadow-[0_-6px_16px_rgba(0,0,0,.35)] z-40">
-            <kbd class="font-bold text-[11px] bg-[#43474d] border border-[#52565d] rounded px-1.5 py-0.5 text-[#e8eaed]">1</kbd>–<kbd class="font-bold text-[11px] bg-[#43474d] border border-[#52565d] rounded px-1.5 py-0.5 text-[#e8eaed]">8</kbd> write a note · 
-            <kbd class="font-bold text-[11px] bg-[#43474d] border border-[#52565d] rounded px-1.5 py-0.5 text-[#e8eaed]">Enter</kbd> new line · 
-            <kbd class="font-bold text-[11px] bg-[#43474d] border border-[#52565d] rounded px-1.5 py-0.5 text-[#e8eaed]">⌫</kbd> delete a dot, or the note once its dots run out · 
-            <kbd class="font-bold text-[11px] bg-[#43474d] border border-[#52565d] rounded px-1.5 py-0.5 text-[#e8eaed]">Space</kbd>/<kbd class="font-bold text-[11px] bg-[#43474d] border border-[#52565d] rounded px-1.5 py-0.5 text-[#e8eaed]">.</kbd> add a dot · 
-            <kbd class="font-bold text-[11px] bg-[#43474d] border border-[#52565d] rounded px-1.5 py-0.5 text-[#e8eaed]">⇧</kbd><kbd class="font-bold text-[11px] bg-[#43474d] border border-[#52565d] rounded px-1.5 py-0.5 text-[#e8eaed]">Del</kbd> delete a note and its dots · arrow keys or click to move the cursor
-            <div class="mt-1 italic text-[#9aa0a6]">The dots after each note are the gap before the next one (hover for the exact
-              time). Click past the dots to add one, click a dot to cut the gap back to that point. Play bars one
-              after another at the end of the pad and your real timing is recorded automatically, pause more than a
-              beat and a new line starts on its own. Turn on 📝 Lyrics to type or edit the words below a line, then
-              click a note (click more to grow the group) and drag-select the matching word(s) to link them - the
-              linked word lights up when its note plays. Click a linked word to unlink it,
-              <kbd class="font-bold text-[11px] bg-[#43474d] border border-[#52565d] rounded px-1.5 py-0.5 text-[#e8eaed]">Esc</kbd> to drop an armed note selection.</div>
-          </footer>
+          <${HelpDialog} dialogRef=${dialogRef} />
         </div>`;
     }
 

@@ -48,7 +48,31 @@ test('loads with no console errors and no literal HTML-entity text', async ({ pa
   expect(errors).toEqual([]);
   // htm (unlike JSX) does not decode named entities in text nodes - a regression
   // here means a literal "&nbsp;" etc. would render as visible text.
-  await expect(page.locator('footer')).not.toContainText('&nbsp;');
+  await expect(page.locator('#root')).not.toContainText('&nbsp;');
+});
+
+test('help dialog: opens from the info button, lists shortcuts, and closes', async ({ page }) => {
+  const dialog = page.locator('dialog');
+  await expect(dialog).not.toBeVisible();
+  await page.getByRole('button', { name: 'Help and keyboard shortcuts' }).click();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('dt')).not.toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).not.toBeVisible();
+});
+
+test('delete button sits outside the play-buttons row, disabled with no song loaded', async ({ page }) => {
+  const del = page.getByRole('button', { name: 'Delete the loaded song' });
+  await expect(del).toBeDisabled();
+  await page.selectOption('select', { label: 'Hot Cross Buns' });
+  await expect(del).toBeDisabled(); // examples aren't saved songs
+});
+
+test('pad scrolls internally without growing the page (viewport-fixed layout)', async ({ page }) => {
+  await page.selectOption('select', { label: 'Twinkle Twinkle Little Star' });
+  const pageScrollHeight = await page.evaluate(() => document.documentElement.scrollHeight);
+  const viewportHeight = await page.evaluate(() => window.innerHeight);
+  expect(pageScrollHeight).toBeLessThanOrEqual(viewportHeight + 1);
 });
 
 test('Tailwind utility classes actually apply (class, not className, still styles via htm+React)', async ({ page }) => {
