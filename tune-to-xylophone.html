@@ -95,6 +95,11 @@
       animation: blink 1.1s steps(1) infinite;
     }
 
+    /* Pulls the caret back over the gap-dots' own trailing padding, so it sits right next to them. */
+    .caret-tight {
+      margin-left: -10px;
+    }
+
     @keyframes blink {
       50% {
         opacity: 0;
@@ -259,7 +264,7 @@
     const QUARTER_SEC = 0.4;
     const REST_UNIT_SEC = QUARTER_SEC / 4;
     const MIN_LIVE_GAP_SEC = 0.06;
-    const PHRASE_BREAK_SEC = 0.4;
+    const PHRASE_BREAK_SEC = 1.2;
     const MAX_PAUSE_SEC = 1.6;
     const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
     const dotCount = (n) => Math.max(1, Math.round(n.sec / REST_UNIT_SEC));
@@ -305,19 +310,6 @@
       anchor.lyricEnd = charEnd;
       anchor.lyricSpan = noteEnd - noteStart + 1;
     }
-    // Flat character offset of (node, offset) within root's text, for turning a DOM Range
-    // (which addresses a specific text node) into a plain index into line.lyric.
-    function textOffset(root, node, offset) {
-      let total = 0;
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-      let cur;
-      while ((cur = walker.nextNode())) {
-        if (cur === node) return total + offset;
-        total += cur.textContent.length;
-      }
-      return total;
-    }
-
     // ---------- Built-in tunes (public domain): notes + the rhyme line below ----------
     // "5-" holds longer, "5--" longer still; "." is a short rest.
     const EXAMPLES = {
@@ -408,11 +400,24 @@
     }
 
     const BTN = "font-semibold text-[13px] border border-[#3a3d42] rounded-lg px-[13px] py-[7px] cursor-pointer text-[#e8eaed] bg-[#35383d] hover:bg-[#3f434a] active:translate-y-px disabled:opacity-45 disabled:cursor-not-allowed transition-colors";
-    const BTN_PRIMARY = "bg-[#12897e] border-transparent hover:bg-[#0f9c8f]";
-    const BTN_DANGER = "bg-[#a83a32] border-transparent hover:bg-[#c2443a]";
+    // The leading "!" forces these to beat BTN's own bg-[#35383d] in the cascade - Tailwind's CDN
+    // JIT orders generated utility rules by its own internal sort, not by class-attribute order or
+    // definition order, so without it some overrides silently lose to BTN's base color at random.
+    const BTN_PRIMARY = "!bg-[#12897e] border-transparent hover:!bg-[#0f9c8f]";
+    const BTN_AMBER = "!bg-[#b9691c] border-transparent hover:!bg-[#cf7a24]";
+    const BTN_BLUE = "!bg-[#189ad3] border-transparent hover:!bg-[#2badea]";
+    const BTN_PURPLE = "!bg-[#6a3fae] border-transparent hover:!bg-[#7d4fc7]";
+    const BTN_DANGER = "!bg-[#a83a32] border-transparent hover:!bg-[#c2443a]";
     const BTN_ICON_DANGER = "font-semibold text-[12px] border border-transparent rounded-lg px-2 py-1 cursor-pointer text-white bg-[#a83a32] hover:bg-[#c2443a] active:translate-y-px disabled:opacity-45 disabled:cursor-not-allowed transition-colors shadow-[0_2px_6px_rgba(0,0,0,.35)]";
     const KBD = "font-bold text-[11px] bg-[#43474d] border border-[#52565d] rounded px-1.5 py-0.5 text-[#e8eaed]";
     const cx = (...xs) => xs.filter(Boolean).join(' ');
+
+    // Lyrics is a 5-state cycle: off (nothing shown) -> on (classic single flowing line) ->
+    // grouped (adds words positioned under their notes) -> link (grouped view + arm/drag to
+    // create links) -> edit (raw text editing) -> back to off.
+    const LYRIC_CYCLE = ['off', 'on', 'grouped', 'link', 'edit'];
+    const noteEditable = (m) => m === 'off' || m === 'on' || m === 'grouped';
+    const showGrouped = (m) => m === 'grouped' || m === 'link';
 
     // ---------- Help dialog content: keyboard shortcuts and usage tips ----------
     const SHORTCUTS = [
@@ -477,8 +482,9 @@
       const dots = [];
       for (let d = 0; d < count; d++) dots.push(d);
       return html`
-        <span class="inline-flex items-center text-[#6f7479] text-[15px] font-bold tracking-[1px] cursor-pointer pr-1.5 pl-0.5 py-0.5 rounded-md hover:bg-[#35383d] hover:text-[#9aa0a6]"
+        <span class="inline-flex items-center text-[#6f7479] text-[15px] font-bold tracking-[1px] cursor-pointer pr-2 pl-0.5 py-0.5 rounded-md hover:bg-[#35383d] hover:text-[#9aa0a6]"
           data-pos=${n.rest ? (li + '-' + ni) : undefined}
+          data-gap=${li + '-' + ni}
           onPointerMove=${(e) => {
           const dot = e.target.closest('[data-step]');
           const steps = dot ? +dot.dataset.step : count + 1;
@@ -492,16 +498,16 @@
           onPointerDown=${(e) => {
           if (e.target !== e.currentTarget) return;
           e.stopPropagation();
-          if (lyricMode) return;
+          if (!noteEditable(lyricMode)) return;
           onGrow();
         }}
         >${dots.map(d => html`
           <span key=${d} data-step=${d + 1}
-            onPointerDown=${(e) => { e.stopPropagation(); if (lyricMode) return; onSetSec((d + 1) * REST_UNIT_SEC); }}
+            onPointerDown=${(e) => { e.stopPropagation(); if (!noteEditable(lyricMode)) return; onSetSec((d + 1) * REST_UNIT_SEC); }}
           >·</span>`)}</span>`;
     }
 
-    // One note chip: cursor placement in normal mode, lyric-range arming in lyric mode.
+    // One note chip: cursor placement when notes are editable, lyric-range arming in link mode.
     function Chip({ n, li, ni, linked, lyricMode, selected, playing, onArm, onPlace }) {
       return html`
         <div
@@ -509,14 +515,50 @@
         linked && "lyric-linked", selected && "lyric-selecting", playing && "playing")}
           style=${{ background: NOTES[n.i].color }}
           data-pos=${li + '-' + ni}
-          onPointerDown=${(e) => { e.stopPropagation(); lyricMode ? onArm(li, ni) : onPlace(li, ni); }}
+          onPointerDown=${(e) => {
+          e.stopPropagation();
+          if (lyricMode === 'link') onArm(li, ni);
+          else if (noteEditable(lyricMode)) onPlace(li, ni);
+        }}
         >${n.i + 1}</div>`;
     }
 
-    function LyricCaption({ line, li, tags, lyricMode, playingTagKey, onLinkSelection, onUnlink, onCaptionDone }) {
+    // Flat character offset of (node, offset) within root's text, for turning a DOM Range
+    // (which addresses a specific text node) into a plain index into line.lyric.
+    function textOffset(root, node, offset) {
+      let total = 0;
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      let cur;
+      while ((cur = walker.nextNode())) {
+        if (cur === node) return total + offset;
+        total += cur.textContent.length;
+      }
+      return total;
+    }
+
+    // The caption always shows the FULL line text, unabridged - linking a word to a note
+    // additionally mirrors it positioned under that note in PadLine, but never removes it from
+    // here. Its own look depends on the current lyric-mode state:
+    //  - off: not rendered at all
+    //  - on: classic single line, linked words shown bold+underlined; click one to unlink it
+    //  - grouped/link: same full line, but plain - the positioned labels under each note (shown
+    //    in these two modes) are the "linked" indicator now, so this line doesn't duplicate it.
+    //    In link mode only, drag-select a word here to link it to the armed note.
+    //  - edit: plain contentEditable text (no tag spans - typing next to React-owned tag markup
+    //    is what caused the old duplication/corruption bug)
+    function LyricCaption({ line, li, tags, lyricMode, lyricSel, playingTagKey, onLinkSelection, onUnlink, onCaptionDone }) {
       const wrapRef = useRef(null);
       const text = line.lyric || '';
-      if (!text && !lyricMode) return null;
+      const armed = !!(lyricMode === 'link' && lyricSel && lyricSel.line === li);
+      const editing = lyricMode === 'edit';
+      const classic = lyricMode === 'on';
+      const interactive = lyricMode === 'link' || lyricMode === 'edit';
+
+      // "grouped" is pure viewing: the positioned labels under each note already are the one
+      // line of lyrics, horizontally laid out - showing this flowing line too would just repeat
+      // it a second time. "link" still needs it, since dragging across it is how you pick a new
+      // word to link.
+      if (lyricMode === 'off' || lyricMode === 'grouped') return null;
 
       const handleMouseUp = () => {
         const wrap = wrapRef.current;
@@ -525,12 +567,16 @@
         const range = sel.getRangeAt(0);
         if (!wrap.contains(range.commonAncestorContainer)) return;
         if (sel.isCollapsed) {
+          if (!classic) return; // no per-word tag spans to click here in grouped/link display
           const container = range.startContainer;
           const el = container.nodeType === 3 ? container.parentElement : container;
           const tagSpan = el && el.closest && el.closest('.lyric-tagged');
           if (tagSpan) onUnlink(li, +tagSpan.dataset.tagNote);
           return;
         }
+        // a plain drag-selection (not armed) is left alone so copying the lyric text works normally -
+        // this used to always clear the selection here, which is why copy appeared to silently fail
+        if (!armed) return;
         const a = textOffset(wrap, range.startContainer, range.startOffset);
         const b = textOffset(wrap, range.endContainer, range.endOffset);
         const charStart = Math.min(a, b), charEnd = Math.max(a, b);
@@ -545,57 +591,98 @@
         stripLyricTags(line.notes);
       };
 
-      const parts = [];
-      let pos = 0;
-      tags.forEach(t => {
-        if (t.start > pos) parts.push(text.slice(pos, t.start));
-        const key = li + '-' + t.noteIdx;
-        parts.push(html`
-          <span key=${key} class=${cx("lyric-tagged font-bold not-italic", lyricMode && "cursor-pointer", playingTagKey === key && "playing")}
-            data-tag-note=${t.noteIdx}>${text.slice(t.start, t.end)}</span>`);
-        pos = t.end;
-      });
-      if (pos < text.length) parts.push(text.slice(pos));
+      let children;
+      if (editing) {
+        children = text;
+      } else if (!classic) {
+        children = text; // grouped/link: plain, undecorated - the positioned label carries the "linked" cue
+      } else {
+        const parts = [];
+        let pos = 0;
+        tags.forEach(t => {
+          if (t.start > pos) parts.push(text.slice(pos, t.start));
+          const key = li + '-' + t.noteIdx;
+          parts.push(html`
+            <span key=${key} class=${cx("lyric-tagged font-bold not-italic", playingTagKey === key && "playing")}
+              data-tag-note=${t.noteIdx}>${text.slice(t.start, t.end)}</span>`);
+          pos = t.end;
+        });
+        if (pos < text.length) parts.push(text.slice(pos));
+        children = parts;
+      }
 
       return html`
         <div ref=${wrapRef}
-          class=${cx("lyric text-[11.5px] text-[#84898e] italic mt-[3px]",
-        lyricMode && "lyric-editable not-italic outline outline-1 outline-dashed outline-[#3a3d42] outline-offset-[3px] rounded cursor-text min-h-[14px]")}
-          contentEditable=${lyricMode}
+          class=${cx("lyric text-[14px] text-[#84898e] italic",
+        lyricMode === 'link' ? "mt-2.5" : "mt-[3px]",
+        interactive && "lyric-editable not-italic outline outline-offset-[3px] rounded min-h-[14px]",
+        editing && "outline-1 outline-dashed outline-[#b9691c] cursor-text",
+        lyricMode === 'link' && (armed
+          ? "outline-2 outline-[#12897e] bg-[rgba(18,137,126,.14)] cursor-pointer"
+          : "outline-1 outline-dashed outline-[#3a3d42] cursor-default"))}
+          contentEditable=${editing}
           suppressContentEditableWarning=${true}
-          onPointerDown=${lyricMode ? (e) => e.stopPropagation() : undefined}
-          onMouseUp=${lyricMode ? handleMouseUp : undefined}
-          onInput=${lyricMode ? handleInput : undefined}
-          onBlur=${lyricMode ? onCaptionDone : undefined}
-        >${parts}</div>`;
+          onPointerDown=${interactive ? (e) => e.stopPropagation() : undefined}
+          onMouseUp=${(classic || lyricMode === 'link') ? handleMouseUp : undefined}
+          onInput=${editing ? handleInput : undefined}
+          onBlur=${editing ? onCaptionDone : undefined}
+        >${children}</div>`;
     }
 
+    // Notes are grouped into "units" of one note (untagged) or a whole tagged span (2+ notes
+    // that share one lyric word/phrase). Each unit is a single flex-col item - chip(s)+dots on
+    // top, the linked word centered below - so: (a) CSS alone centers whichever side is
+    // narrower, no width math needed, and (b) a multi-note span can never be split across a
+    // line-wrap, since it's one atomic flex item.
     function PadLine({ line, li, cursor, lyricMode, lyricSel, playingPos, playingTagKey, empty,
       onArmNote, onPlaceCursor, onSetGapSec, onGrowGap, onTip, onHideTip,
       onLinkSelection, onUnlink, onCaptionDone, onRowClick }) {
       const tags = collectLineTags(line);
-      const items = [];
-      line.notes.forEach((n, ni) => {
-        if (li === cursor.line && ni === cursor.pos && !lyricMode) items.push(html`<span key=${'caret-' + ni} class="caret"></span>`);
-        if (!n.rest) {
-          const linked = tags.some(t => ni >= t.noteIdx && ni <= t.noteIdx + t.noteSpan - 1);
-          const selected = !!(lyricMode && lyricSel && lyricSel.line === li && ni >= lyricSel.start && ni <= lyricSel.end);
-          const playing = !!(playingPos && playingPos.li === li && playingPos.ni === ni);
-          items.push(html`<${Chip} key=${'chip-' + ni} n=${n} li=${li} ni=${ni} linked=${linked} lyricMode=${lyricMode}
-            selected=${selected} playing=${playing} onArm=${onArmNote} onPlace=${onPlaceCursor} />`);
+      const tagByNoteIdx = new Map(tags.map(t => [t.noteIdx, t]));
+      const text = line.lyric || '';
+      const units = [];
+      let ni = 0;
+      while (ni < line.notes.length) {
+        const unitStart = ni;
+        const tag = tagByNoteIdx.get(ni);
+        const span = tag ? tag.noteSpan : 1;
+        const subItems = [];
+        for (let k = 0; k < span; k++) {
+          const idx = ni + k;
+          const n = line.notes[idx];
+          if (li === cursor.line && idx === cursor.pos && noteEditable(lyricMode)) subItems.push(html`<span key=${'caret-' + idx} class=${cx("caret", cursor.pos > 0 && "caret-tight")}></span>`);
+          if (!n.rest) {
+            const selected = !!(lyricMode === 'link' && lyricSel && lyricSel.line === li && idx >= lyricSel.start && idx <= lyricSel.end);
+            const playing = !!(playingPos && playingPos.li === li && playingPos.ni === idx);
+            subItems.push(html`<${Chip} key=${'chip-' + idx} n=${n} li=${li} ni=${idx} linked=${!!tag} lyricMode=${lyricMode}
+              selected=${selected} playing=${playing} onArm=${onArmNote} onPlace=${onPlaceCursor} />`);
+          }
+          subItems.push(html`<${GapDots} key=${'gap-' + idx} n=${n} li=${li} ni=${idx} lyricMode=${lyricMode}
+            onSetSec=${(sec) => onSetGapSec(li, idx, sec)} onGrow=${() => onGrowGap(li, idx)}
+            onTip=${onTip} onHideTip=${onHideTip} />`);
         }
-        items.push(html`<${GapDots} key=${'gap-' + ni} n=${n} li=${li} ni=${ni} lyricMode=${lyricMode}
-          onSetSec=${(sec) => onSetGapSec(li, ni, sec)} onGrow=${() => onGrowGap(li, ni)}
-          onTip=${onTip} onHideTip=${onHideTip} />`);
-      });
-      if (li === cursor.line && cursor.pos >= line.notes.length && !lyricMode) items.push(html`<span key="caret-end" class="caret"></span>`);
-      if (empty) items.push(html`<span key="ph" class="text-[#6f7479] text-[12.5px] italic">Tap the bars to write your tune…</span>`);
+        const tagKey = tag ? li + '-' + tag.noteIdx : null;
+        units.push(html`
+          <span key=${'unit-' + unitStart} class="inline-flex flex-col items-start">
+            <span class="inline-flex gap-[5px]">${subItems}</span>
+            ${tag && showGrouped(lyricMode) ? html`
+              <span class=${cx("text-[11px] font-bold not-italic whitespace-nowrap mt-0.5 text-[#84898e] rounded px-1",
+          lyricMode === 'link' && "cursor-pointer",
+          playingTagKey === tagKey && "playing !bg-[#12897e] !text-white")}
+                data-tag-note=${tag.noteIdx}
+                onPointerDown=${lyricMode === 'link' ? (e) => { e.stopPropagation(); onUnlink(li, tag.noteIdx); } : undefined}
+              >${text.slice(tag.start, tag.end)}</span>` : null}
+          </span>`);
+        ni += span;
+      }
+      if (li === cursor.line && cursor.pos >= line.notes.length && noteEditable(lyricMode)) units.push(html`<span key="caret-end" class=${cx("caret", cursor.pos > 0 && "caret-tight")}></span>`);
+      if (empty) units.push(html`<span key="ph" class="text-[#6f7479] text-[12.5px] italic">Tap the bars to write your tune…</span>`);
 
       return html`
         <div class="py-[5px] border-b border-[#33363b] last:border-b-0"
-          onPointerDown=${() => onRowClick(li)}>
-          <div class=${cx("flex flex-wrap gap-[5px] items-center min-h-[26px]", lyricMode ? "cursor-default" : "cursor-text")}>${items}</div>
-          <${LyricCaption} line=${line} li=${li} tags=${tags} lyricMode=${lyricMode} playingTagKey=${playingTagKey}
+          onPointerDown=${(e) => onRowClick(li, e)}>
+          <div class=${cx("flex flex-wrap items-start gap-[5px] min-h-[26px]", noteEditable(lyricMode) ? "cursor-text" : "cursor-default")}>${units}</div>
+          <${LyricCaption} line=${line} li=${li} tags=${tags} lyricMode=${lyricMode} lyricSel=${lyricSel} playingTagKey=${playingTagKey}
             onLinkSelection=${onLinkSelection} onUnlink=${onUnlink} onCaptionDone=${onCaptionDone} />
         </div>`;
     }
@@ -653,6 +740,8 @@
           player: { events: [], idx: 0, timer: null, playing: false },
           playingPos: null,
           playingTagKey: null,
+          gapFlashId: 0,
+          gapFlashTimer: null,
         };
       }
       const s = S.current;
@@ -664,15 +753,33 @@
       const [savedSongs, setSavedSongs] = useState(loadSavedSongs());
       const [currentSongName, setCurrentSongName] = useState(null);
       const [tuneValue, setTuneValue] = useState('');
-      const [lyricMode, setLyricMode] = useState(false);
+      const [lyricMode, setLyricMode] = useState('off'); // one of LYRIC_CYCLE
       const [lyricSel, setLyricSel] = useState(null);
       const [micRunning, setMicRunning] = useState(false);
       const [tip, setTip] = useState(null);
+      const [linkHint, setLinkHint] = useState(null);
 
       const barRefs = useRef([]);
       const padRef = useRef(null);
       const fileInputRef = useRef(null);
       const dialogRef = useRef(null);
+
+      // Armed-note hint: a fixed-position tooltip (never part of document flow, so it can
+      // never push pad rows around) anchored over the most recently armed chip.
+      useEffect(() => {
+        if (!lyricSel || !padRef.current) { setLinkHint(null); return; }
+        const reposition = () => {
+          const el = padRef.current.querySelector(`[data-pos="${lyricSel.line}-${lyricSel.end}"]`);
+          if (!el) { setLinkHint(null); return; }
+          const r = el.getBoundingClientRect();
+          setLinkHint({ x: r.left + r.width / 2, y: r.top, text: 'Select a word to link it · Esc to cancel' });
+        };
+        reposition();
+        const pad = padRef.current;
+        pad.addEventListener('scroll', reposition);
+        window.addEventListener('resize', reposition);
+        return () => { pad.removeEventListener('scroll', reposition); window.removeEventListener('resize', reposition); };
+      }, [lyricSel]);
 
       useEffect(() => { document.body.dataset.material = soundType; }, [soundType]);
 
@@ -714,10 +821,13 @@
         finishPlayback();
         s.lastLiveNote = null;
         const line = s.lines[s.cursor.line];
+        let flashGap = null;
         if (s.cursor.pos > 0) {
           const n = line.notes[s.cursor.pos - 1];
-          if (dotCount(n) > 1) { n.sec -= REST_UNIT_SEC; }
-          else {
+          if (dotCount(n) > 1) {
+            n.sec -= REST_UNIT_SEC;
+            flashGap = { li: s.cursor.line, ni: s.cursor.pos - 1, sec: n.sec };
+          } else {
             invalidateTagsAt(line, s.cursor.pos - 1);
             line.notes.splice(s.cursor.pos - 1, 1);
             s.cursor.pos--;
@@ -729,7 +839,7 @@
           prev.notes = prev.notes.concat(line.notes);
           s.lines.splice(s.cursor.line + 1, 1);
         }
-        scrollAfterRender({ type: 'caret' });
+        scrollAfterRender({ type: 'caret', flashGap });
       }
       function forwardDelete() {
         finishPlayback();
@@ -764,8 +874,10 @@
         if (s.cursor.pos === 0) return;
         finishPlayback();
         s.lastLiveNote = null;
-        s.lines[s.cursor.line].notes[s.cursor.pos - 1].sec += REST_UNIT_SEC;
-        scrollAfterRender({ type: 'caret' });
+        const li = s.cursor.line, ni = s.cursor.pos - 1;
+        const n = s.lines[li].notes[ni];
+        n.sec += REST_UNIT_SEC;
+        scrollAfterRender({ type: 'caret', flashGap: { li, ni, sec: n.sec } });
       }
       function moveCursor(key) {
         const len = () => s.lines[s.cursor.line].notes.length;
@@ -809,13 +921,26 @@
         stripLyricTags([s.lines[li].notes[noteIdx]]);
         forceUpdate();
       }
-      function onRowClick(li) {
-        if (lyricMode) { setLyricSel(null); return; }
-        s.cursor = { line: li, pos: s.lines[li].notes.length };
+      function onRowClick(li, e) {
+        if (!noteEditable(lyricMode)) { setLyricSel(null); return; }
+        const line = s.lines[li];
+        const allMarks = Array.from(e.currentTarget.querySelectorAll('[data-pos]'))
+          .map(el => ({ ni: +el.dataset.pos.split('-')[1], rect: el.getBoundingClientRect() }))
+          .sort((a, b) => a.ni - b.ni);
+        // Notes wrap onto multiple visual rows on long lines; restrict to the row under the click
+        // so an X-only comparison doesn't jump across wrapped rows.
+        const sameRow = allMarks.filter(m => e.clientY >= m.rect.top && e.clientY <= m.rect.bottom);
+        const marks = sameRow.length ? sameRow : allMarks;
+        let pos = line.notes.length;
+        for (const m of marks) {
+          if (e.clientX < m.rect.left + m.rect.width / 2) { pos = m.ni; break; }
+          pos = m.ni + 1;
+        }
+        s.cursor = { line: li, pos };
         scrollAfterRender({ type: 'caret' });
       }
-      function toggleLyricMode() {
-        setLyricMode(v => !v);
+      function cycleLyricMode() {
+        setLyricMode(m => LYRIC_CYCLE[(LYRIC_CYCLE.indexOf(m) + 1) % LYRIC_CYCLE.length]);
         setLyricSel(null);
       }
 
@@ -873,6 +998,17 @@
         } else if (target.type === 'pos') {
           const el = padRef.current.querySelector(`[data-pos="${target.key}"]`);
           if (el) el.scrollIntoView({ block: 'nearest' });
+        }
+        if (target.flashGap) {
+          const { li, ni, sec } = target.flashGap;
+          const el = padRef.current.querySelector(`[data-gap="${li}-${ni}"]`);
+          if (el) {
+            const r = el.getBoundingClientRect();
+            clearTimeout(s.gapFlashTimer);
+            const flashId = ++s.gapFlashId;
+            setTip({ x: r.left + r.width / 2, y: r.top, text: sec.toFixed(1) + 's' });
+            s.gapFlashTimer = setTimeout(() => { if (s.gapFlashId === flashId) setTip(null); }, 900);
+          }
         }
       });
 
@@ -1060,8 +1196,8 @@
           if (tagName === 'INPUT' || tagName === 'SELECT' || tagName === 'TEXTAREA' || tagName === 'BUTTON') return;
           if (e.target.isContentEditable) return;
           if (e.target.classList && e.target.classList.contains('bar') && (e.key === 'Enter' || e.key === ' ')) return;
-          if (lyricMode) {
-            if (e.key === 'Escape' && lyricSel) { e.preventDefault(); setLyricSel(null); }
+          if (!noteEditable(lyricMode)) {
+            if (lyricMode === 'link' && e.key === 'Escape' && lyricSel) { e.preventDefault(); setLyricSel(null); }
             return;
           }
           if (e.key >= '1' && e.key <= '8') { if (!e.repeat) strike(+e.key - 1); }
@@ -1083,6 +1219,17 @@
       const playing = s.player.playing;
       const playLabel = playing ? '⏸ Pause' : (s.player.idx > 0 ? '▶ Resume' : '▶ Play');
       const noNotes = !hasNotes(s.lines);
+      const LYRIC_BTN = {
+        off: {
+          label: '📝 Lyrics', style: null,
+          extraStyle: { backgroundImage: 'linear-gradient(to bottom right, transparent calc(50% - 1px), #c2443a calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px))' },
+          title: 'Lyrics: off, nothing shown. Click to show lyrics.',
+        },
+        on: { label: '📖 Lyrics: On', style: BTN_BLUE, title: 'Lyrics: on, shown as one line. Click to show words grouped under their notes.' },
+        grouped: { label: '🎵 Lyrics: Grouped', style: BTN_PURPLE, title: 'Lyrics: grouped, words shown under their notes. Click to start linking words to notes.' },
+        link: { label: '🔗 Link words', style: BTN_PRIMARY, title: 'Lyrics: linking words to notes. Click to switch to editing text.' },
+        edit: { label: '✏️ Edit text', style: BTN_AMBER, title: 'Lyrics: editing text. Click to turn lyrics off.' },
+      }[lyricMode];
 
       const savedNames = Object.keys(savedSongs).sort((a, b) => a.localeCompare(b));
 
@@ -1139,7 +1286,8 @@
                   </svg>
                 </button>
                 <button class=${BTN} onClick=${doClear}>✕ Clear</button>
-                <button class=${cx(BTN, lyricMode && BTN_PRIMARY)} title="Tag notes with lyrics" onClick=${toggleLyricMode}>📝 Lyrics</button>
+                <button class=${cx(BTN, LYRIC_BTN.style)} data-testid="lyrics-toggle" aria-label=${'Lyrics mode: ' + lyricMode}
+                  title=${LYRIC_BTN.title} style=${LYRIC_BTN.extraStyle} onClick=${cycleLyricMode}>${LYRIC_BTN.label}</button>
               </div>
 
               <div ref=${padRef} class="flex-1 min-h-0 overflow-y-auto px-1 py-0.5">
@@ -1147,8 +1295,8 @@
                   lyricMode=${lyricMode} lyricSel=${lyricSel} playingPos=${s.playingPos} playingTagKey=${s.playingTagKey}
                   empty=${empty && li === 0}
                   onArmNote=${armNote} onPlaceCursor=${placeCursor}
-                  onSetGapSec=${(li2, ni2, sec) => { if (lyricMode) return; finishPlayback(); s.lastLiveNote = null; s.lines[li2].notes[ni2].sec = sec; forceUpdate(); }}
-                  onGrowGap=${(li2, ni2) => { if (lyricMode) return; finishPlayback(); s.lastLiveNote = null; s.lines[li2].notes[ni2].sec += REST_UNIT_SEC; forceUpdate(); }}
+                  onSetGapSec=${(li2, ni2, sec) => { if (!noteEditable(lyricMode)) return; finishPlayback(); s.lastLiveNote = null; s.lines[li2].notes[ni2].sec = sec; forceUpdate(); }}
+                  onGrowGap=${(li2, ni2) => { if (!noteEditable(lyricMode)) return; finishPlayback(); s.lastLiveNote = null; s.lines[li2].notes[ni2].sec += REST_UNIT_SEC; forceUpdate(); }}
                   onTip=${(x, y, text) => setTip({ x, y, text })} onHideTip=${() => setTip(null)}
                   onLinkSelection=${onLinkSelection} onUnlink=${onUnlink} onCaptionDone=${forceUpdate}
                   onRowClick=${onRowClick} />`)}
@@ -1171,6 +1319,7 @@
           </div>
 
           <${GapTooltip} tip=${tip} />
+          <${GapTooltip} tip=${linkHint} />
           <${HelpDialog} dialogRef=${dialogRef} />
         </div>`;
     }

@@ -115,6 +115,8 @@ test('Enter starts a new line', async ({ page }) => {
 test('loading a built-in example populates lines with lyric captions', async ({ page }) => {
   await page.selectOption('select', { label: 'Twinkle Twinkle Little Star' });
   await expect(page.locator('.chip')).toHaveCount(42);
+  // lyrics default to "off" (nothing shown) - switch to "on" to see the caption
+  await page.locator('[data-testid="lyrics-toggle"]').click();
   await expect(page.locator('.lyric').first()).toHaveText('Twinkle, twinkle, little star');
 });
 
@@ -132,37 +134,71 @@ test('playback highlights notes in sequence and returns to Play when done', asyn
   await expect(page.locator('.chip.playing')).toHaveCount(0);
 });
 
+// Lyrics cycles through 5 states: off -> on -> grouped -> link -> edit -> off.
+// Reads the button's actual current state (via aria-label) so repeated calls compose correctly
+// regardless of where the cycle currently sits.
+async function cycleLyricsTo(page, target) {
+  const order = ['off', 'on', 'grouped', 'link', 'edit'];
+  const lyricsBtn = page.locator('[data-testid="lyrics-toggle"]');
+  const current = (await lyricsBtn.getAttribute('aria-label')).replace('Lyrics mode: ', '');
+  const steps = (order.indexOf(target) - order.indexOf(current) + order.length) % order.length;
+  for (let i = 0; i < steps; i++) await lyricsBtn.click();
+  return lyricsBtn;
+}
+
 test('lyric linking: arming a note and drag-selecting a word links them, and it highlights on playback', async ({ page }) => {
   await page.selectOption('select', { label: 'Twinkle Twinkle Little Star' });
-  await page.getByRole('button', { name: '📝 Lyrics' }).click();
+  const lyricsBtn = await cycleLyricsTo(page, 'link');
+  await expect(lyricsBtn).toHaveText('🔗 Link words');
 
   await page.locator('.chip').first().click(); // arm note index 0
   await expect(page.locator('.chip').first()).toHaveClass(/lyric-selecting/);
 
   const caption = page.locator('.lyric').first();
   await dragSelectText(page, caption, 0, 7); // "Twinkle"
-  const tag = page.locator('.lyric-tagged', { hasText: 'Twinkle' }).first();
-  await expect(tag).toHaveAttribute('data-tag-note', '0');
+  const label = page.locator('[data-tag-note="0"]');
+  await expect(label).toHaveText('Twinkle');
   await expect(page.locator('.chip').first()).toHaveClass(/lyric-linked/);
+  // the flowing caption still shows the full, unmodified sentence - linking only adds the
+  // positioned label under the note, it never removes the word from the line
+  await expect(caption).toHaveText('Twinkle, twinkle, little star');
 
-  // clicking the tagged word un-links it
-  await tag.click();
-  await expect(page.locator('.lyric-tagged')).toHaveCount(0);
+  // clicking the positioned label un-links it
+  await label.click();
+  await expect(page.locator('[data-tag-note]')).toHaveCount(0);
 
   // re-link, then confirm it highlights in sync with playback
   await page.locator('.chip').first().click();
   await dragSelectText(page, caption, 0, 7);
-  await page.getByRole('button', { name: '📝 Lyrics' }).click(); // exit lyric mode
   await page.getByRole('button', { name: /Play|Pause|Resume/ }).click();
-  await expect(page.locator('.lyric-tagged.playing')).toHaveCount(1, { timeout: 3000 });
+  await expect(page.locator('[data-tag-note].playing')).toHaveCount(1, { timeout: 3000 });
 });
 
-test('typing into an empty lyric caption in lyric mode lands text (regression: row click used to steal focus)', async ({ page }) => {
-  await page.getByRole('button', { name: '📝 Lyrics' }).click();
+test('lyric edit mode: typing into an empty caption lands text, and link mode never allows typing', async ({ page }) => {
+  const linkBtn = await cycleLyricsTo(page, 'link');
   const caption = page.locator('.lyric').first();
+  await caption.click();
+  await page.keyboard.type('should not appear');
+  await expect(caption).toHaveText('');
+
+  await linkBtn.click(); // link -> edit
+  await expect(linkBtn).toHaveText('✏️ Edit text');
   await caption.click();
   await page.keyboard.type('hello world');
   await expect(caption).toHaveText('hello world');
+});
+
+test('lyric off state hides the caption entirely, even with existing lyric text', async ({ page }) => {
+  await page.selectOption('select', { label: 'Twinkle Twinkle Little Star' });
+  // default state is off - nothing shown, even though this line has lyric text
+  await expect(page.locator('.lyric')).toHaveCount(0);
+  const lyricsBtn = await cycleLyricsTo(page, 'on');
+  await expect(lyricsBtn).toHaveText('📖 Lyrics: On');
+  await expect(page.locator('.lyric').first()).toBeVisible();
+  // cycling the rest of the way around (off -> on -> grouped -> link -> edit -> off) hides it again
+  await cycleLyricsTo(page, 'edit');
+  await lyricsBtn.click(); // edit -> off
+  await expect(page.locator('.lyric')).toHaveCount(0);
 });
 
 test('Clear resets the pad to one empty line', async ({ page }) => {
