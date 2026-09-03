@@ -2,7 +2,7 @@
 const { test, expect } = require('@playwright/test');
 const path = require('path');
 
-const APP_URL = 'file://' + path.resolve(__dirname, '..', 'tune-to-xylophone.html').replace(/\\/g, '/');
+const APP_URL = 'file://' + path.resolve(__dirname, '..', 'xylotune.html').replace(/\\/g, '/');
 
 test.beforeEach(async ({ page }) => {
   await page.goto(APP_URL);

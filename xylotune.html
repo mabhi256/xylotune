@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Tune to Xylophone</title>
+  <title>Xylotune</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
@@ -1236,7 +1236,7 @@
       return html`
         <div class="h-full flex flex-col mx-auto w-full max-w-[1120px]">
           <header class="flex items-center justify-between gap-3 flex-wrap mb-3.5 shrink-0">
-            <h1 class="text-[18px] font-bold m-0 tracking-[.2px]">Tune to Xylophone</h1>
+            <h1 class="text-[18px] font-bold m-0 tracking-[.2px]">Xylotune</h1>
             <div class="flex gap-2 flex-wrap items-center">
               <button class=${cx(BTN, micRunning && BTN_DANGER)} onClick=${onMicClick}>${micRunning ? '⏹ Stop' : '🎤 Hum it'}</button>
               <button class=${BTN} onClick=${() => fileInputRef.current.click()}>📁 Upload</button>
