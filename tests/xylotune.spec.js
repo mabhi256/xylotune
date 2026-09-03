@@ -207,3 +207,169 @@ test('Clear resets the pad to one empty line', async ({ page }) => {
   await page.getByRole('button', { name: '✕ Clear' }).click();
   await expect(page.locator('.chip')).toHaveCount(0);
 });
+
+// ---------- In-app dialogs (replace window.prompt/confirm/alert - group D) ----------
+// Each test also fails the moment a native dialog fires, since that's exactly the
+// regression this component replaces.
+
+test('save song: names it via an in-app dialog, not window.prompt', async ({ page }) => {
+  page.on('dialog', (d) => { throw new Error(`native dialog fired: ${d.type()} "${d.message()}"`); });
+
+  await page.locator('.bar').first().click();
+  await page.getByRole('button', { name: '💾 Save' }).click();
+
+  const dialog = page.locator('dialog[open]');
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('Song name:');
+  await dialog.locator('input[type="text"]').fill('My Test Song');
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await expect(dialog).not.toBeVisible();
+
+  await expect(page.locator('select')).toContainText('My Test Song');
+});
+
+test('save song: an empty or whitespace-only name is silently ignored', async ({ page }) => {
+  await page.locator('.bar').first().click();
+  await page.getByRole('button', { name: '💾 Save' }).click();
+  const dialog = page.locator('dialog[open]');
+  await dialog.locator('input[type="text"]').fill('   ');
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.locator('select')).not.toContainText('My Songs');
+});
+
+test('save song: Escape cancels the dialog and saves nothing', async ({ page }) => {
+  await page.locator('.bar').first().click();
+  await page.getByRole('button', { name: '💾 Save' }).click();
+  const dialog = page.locator('dialog[open]');
+  await dialog.locator('input[type="text"]').fill('Should Not Save');
+  await page.keyboard.press('Escape');
+  await expect(dialog).not.toBeVisible();
+  await expect(page.locator('select')).not.toContainText('Should Not Save');
+});
+
+test('save song: reusing an existing name asks to overwrite via dialog, Cancel leaves it untouched', async ({ page }) => {
+  await page.locator('.bar').nth(0).click();
+  await page.getByRole('button', { name: '💾 Save' }).click();
+  let dialog = page.locator('dialog[open]');
+  await dialog.locator('input[type="text"]').fill('Song A');
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await expect(dialog).not.toBeVisible();
+
+  // start a fresh, different tune so the save below targets an *other* existing song
+  await page.getByRole('button', { name: '✕ Clear' }).click();
+  await page.locator('.bar').nth(1).click();
+  await page.getByRole('button', { name: '💾 Save' }).click();
+  dialog = page.locator('dialog[open]');
+  await dialog.locator('input[type="text"]').fill('Song A');
+  await dialog.getByRole('button', { name: 'OK' }).click();
+
+  dialog = page.locator('dialog[open]');
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('"Song A" already exists. Overwrite it?');
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.locator('select option', { hasText: 'Song A' })).toHaveCount(1);
+
+  // confirming the same overwrite prompt replaces it, still just one "Song A" entry
+  await page.getByRole('button', { name: '💾 Save' }).click();
+  dialog = page.locator('dialog[open]');
+  await dialog.locator('input[type="text"]').fill('Song A');
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  dialog = page.locator('dialog[open]');
+  await dialog.getByRole('button', { name: 'Overwrite' }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.locator('select option', { hasText: 'Song A' })).toHaveCount(1);
+});
+
+test('delete song: confirms via an in-app dialog, not window.confirm', async ({ page }) => {
+  page.on('dialog', (d) => { throw new Error(`native dialog fired: ${d.type()} "${d.message()}"`); });
+
+  await page.locator('.bar').first().click();
+  await page.getByRole('button', { name: '💾 Save' }).click();
+  const saveDialog = page.locator('dialog[open]');
+  await saveDialog.locator('input[type="text"]').fill('Deletable Song');
+  await saveDialog.getByRole('button', { name: 'OK' }).click();
+
+  const delBtn = page.getByRole('button', { name: 'Delete the loaded song' });
+  await expect(delBtn).toBeEnabled();
+  await delBtn.click();
+
+  let confirmDialog = page.locator('dialog[open]');
+  await expect(confirmDialog).toBeVisible();
+  await expect(confirmDialog).toContainText('Delete "Deletable Song"?');
+  await confirmDialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(confirmDialog).not.toBeVisible();
+  await expect(delBtn).toBeEnabled(); // cancelled - still there
+
+  await delBtn.click();
+  confirmDialog = page.locator('dialog[open]');
+  await confirmDialog.getByRole('button', { name: 'Delete' }).click();
+  await expect(confirmDialog).not.toBeVisible();
+  await expect(delBtn).toBeDisabled();
+});
+
+// ---------- Reduction engine (group C): pure and deterministic, so these call it directly
+// via window.__xyloTest with synthetic note data instead of routing real audio through
+// Basic Pitch - no mic, no network, no ML model needed to check the fitting logic itself.
+
+test('reduction engine: the bars are C5-C6 major (72,74,76,77,79,81,83,84)', async ({ page }) => {
+  const scale = await page.evaluate(() => window.__xyloTest.SCALE_MIDI);
+  expect(scale).toEqual([72, 74, 76, 77, 79, 81, 83, 84]);
+});
+
+test('reduction engine: skyline keeps only the highest note active at each moment', async ({ page }) => {
+  const segments = await page.evaluate(() => window.__xyloTest.skylineMelody([
+    { midi: 60, start: 0, dur: 2 },   // low note, sounds the whole time
+    { midi: 67, start: 0.5, dur: 1 }, // higher note, overlaps the middle of it
+  ]));
+  expect(segments).toEqual([
+    { midi: 60, start: 0, dur: 0.5 },
+    { midi: 67, start: 0.5, dur: 1 },
+    { midi: 60, start: 1.5, dur: 0.5 },
+  ]);
+});
+
+test('reduction engine: key detection finds the tonic from pitch classes alone', async ({ page }) => {
+  const tonics = await page.evaluate(() => {
+    const cMajor = [60, 62, 64, 65, 67, 69, 71].map(midi => ({ midi, dur: 1 }));
+    const gMajor = [67, 69, 71, 72, 74, 76, 78].map(midi => ({ midi, dur: 1 })); // G A B C D E F#
+    return {
+      c: window.__xyloTest.detectTonicPitchClass(cMajor),
+      g: window.__xyloTest.detectTonicPitchClass(gMajor),
+    };
+  });
+  expect(tonics).toEqual({ c: 0, g: 7 });
+});
+
+test('reduction engine: octave placement picks the shift that keeps the most note-time in range', async ({ page }) => {
+  const shift = await page.evaluate(() => {
+    // all one octave below the register (C4s); +12 and +24 both land in range, but +12 is closer
+    const melody = [{ midi: 60, dur: 1 }];
+    return window.__xyloTest.chooseOctaveShift(melody, 0);
+  });
+  expect(shift).toBe(12);
+});
+
+test('reduction engine: a two-octave ascending scale folds into two passes over the eight bars with a perfect fit', async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const midis = [60, 62, 64, 65, 67, 69, 71, 72, 74, 76, 77, 79, 81, 83, 84]; // C4..C6, straight C major
+    const rawNotes = midis.map((midi, i) => ({ midi, start: i * 0.5, dur: 0.5 }));
+    return window.__xyloTest.reduceToXylophone(rawNotes);
+  });
+  expect(result.detected.map(n => n.i)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 1, 2, 3, 4, 5, 6, 7]);
+  expect(result.fit).toEqual({ total: 15, matched: 15, offRatio: 0 });
+});
+
+test('reduction engine: fitMessage is silent on a perfect fit and honest otherwise', async ({ page }) => {
+  const messages = await page.evaluate(() => ({
+    perfect: window.__xyloTest.fitMessage({ total: 5, matched: 5, offRatio: 0 }),
+    none: window.__xyloTest.fitMessage(null),
+    minor: window.__xyloTest.fitMessage({ total: 10, matched: 9, offRatio: 0.05 }),
+    severe: window.__xyloTest.fitMessage({ total: 10, matched: 5, offRatio: 0.4 }),
+  }));
+  expect(messages.perfect).toBeNull();
+  expect(messages.none).toBeNull();
+  expect(messages.minor).toBe('Almost a perfect fit. 1 of 10 note nudged to the nearest bar.');
+  expect(messages.severe).toBe("This tune needs notes your xylophone doesn't have — here's the closest version. 5 of 10 notes nudged to the nearest bar.");
+});

@@ -391,41 +391,190 @@
       return ls.map(l => ({ lyric: l.lyric, notes: l.notes.map(n => ({ ...n })) }));
     }
 
-    // ---------- Pitch detection (autocorrelation, ACF2+) ----------
-    function autoCorrelate(buf, sampleRate) {
-      let SIZE = buf.length;
-      let rms = 0;
-      for (let i = 0; i < SIZE; i++) { const v = buf[i]; rms += v * v; }
-      rms = Math.sqrt(rms / SIZE);
-      if (rms < 0.010) return -1;
-      let r1 = 0, r2 = SIZE - 1, thres = 0.2;
-      for (let i = 0; i < SIZE / 2; i++) { if (Math.abs(buf[i]) < thres) { r1 = i; break; } }
-      for (let i = 1; i < SIZE / 2; i++) { if (Math.abs(buf[SIZE - i]) < thres) { r2 = SIZE - i; break; } }
-      buf = buf.slice(r1, r2);
-      SIZE = buf.length;
-      if (SIZE < 512) return -1;
-      const c = new Array(SIZE).fill(0);
-      for (let i = 0; i < SIZE; i++) {
-        for (let j = 0; j < SIZE - i; j++) { c[i] += buf[j] * buf[j + i]; }
-      }
-      let d = 0; while (c[d] > c[d + 1]) d++;
-      let maxval = -1, maxpos = -1;
-      for (let i = d; i < SIZE; i++) {
-        if (c[i] > maxval) { maxval = c[i]; maxpos = i; }
-      }
-      let T0 = maxpos;
-      if (T0 <= 0) return -1;
-      const x1 = c[T0 - 1] || c[T0], x2 = c[T0], x3 = c[T0 + 1] || c[T0];
-      const a = (x1 + x3 - 2 * x2) / 2, b = (x3 - x1) / 2;
-      if (a) T0 = T0 - b / (2 * a);
-      return sampleRate / T0;
+    // ---------- Getting songs in: transcription via Basic Pitch ----------
+    // Loaded lazily, once, on first use: it pulls in TensorFlow.js and a few MB of model
+    // weights from jsdelivr, so nothing downloads until a hum actually needs it. Polyphonic
+    // and instrument-agnostic, and runs entirely in the browser, no server involved - though
+    // in practice a hummed single voice, with nothing else in the recording to confuse the
+    // reduction engine's melody-picking, is what actually transcribes cleanly onto 8 bars.
+    const BASIC_PITCH_VERSION = '1.0.1';
+    const BASIC_PITCH_ESM_URL = `https://cdn.jsdelivr.net/npm/@spotify/basic-pitch@${BASIC_PITCH_VERSION}/+esm`;
+    const BASIC_PITCH_MODEL_URL = `https://cdn.jsdelivr.net/npm/@spotify/basic-pitch@${BASIC_PITCH_VERSION}/model/model.json`;
+    const TRANSCRIBE_SAMPLE_RATE = 22050; // basic-pitch's model is fixed to this rate, mono
+
+    let basicPitchPromise = null;
+    function loadBasicPitch() {
+      if (basicPitchPromise) return basicPitchPromise;
+      const p = import(BASIC_PITCH_ESM_URL).then(mod => ({
+        outputToNotesPoly: mod.outputToNotesPoly,
+        noteFramesToTime: mod.noteFramesToTime,
+        instance: new mod.BasicPitch(BASIC_PITCH_MODEL_URL),
+      }));
+      // Don't cache a failed load (offline, CDN hiccup) - let the next attempt retry instead
+      // of every later hum/upload failing forever because of one dropped connection.
+      p.catch(() => { basicPitchPromise = null; });
+      basicPitchPromise = p;
+      return p;
     }
-    function freqToNoteIndex(freq) {
-      if (freq <= 0) return -1;
-      const semis = 12 * Math.log2(freq / 261.63);
-      const pitchClass = ((Math.round(semis) % 12) + 12) % 12;
-      const chromaticToScaleDegree = { 0: 0, 1: 0, 2: 1, 3: 1, 4: 2, 5: 3, 6: 3, 7: 4, 8: 4, 9: 5, 10: 5, 11: 6 };
-      return chromaticToScaleDegree[pitchClass];
+
+    // Basic Pitch requires exactly-22.05kHz mono; this renders any decoded recording down
+    // to that via an OfflineAudioContext, which does the resampling and channel downmix for
+    // free as part of routing the buffer through it.
+    async function resampleMono(audioBuffer) {
+      const sampleCount = Math.ceil(audioBuffer.duration * TRANSCRIBE_SAMPLE_RATE);
+      const offline = new OfflineAudioContext(1, sampleCount, TRANSCRIBE_SAMPLE_RATE);
+      const src = offline.createBufferSource();
+      src.buffer = audioBuffer;
+      src.connect(offline.destination);
+      src.start(0);
+      return offline.startRendering();
+    }
+
+    // Runs the model over a decoded recording and returns its raw notes: any pitch, any
+    // octave, exactly as heard. Fitting them onto eight bars is the reduction engine's job,
+    // not this one - see reduceToXylophone below.
+    async function transcribeAudioBuffer(audioBuffer, onProgress) {
+      const { outputToNotesPoly, noteFramesToTime, instance } = await loadBasicPitch();
+      const resampled = await resampleMono(audioBuffer);
+      const frames = [], onsets = [], contours = [];
+      await instance.evaluateModel(resampled, (f, o, c) => {
+        frames.push(...f); onsets.push(...o); contours.push(...c);
+      }, onProgress || (() => { }));
+      return noteFramesToTime(outputToNotesPoly(frames, onsets))
+        .map(n => ({ midi: n.pitchMidi, start: n.startTimeSeconds, dur: n.durationSeconds, amp: n.amplitude }));
+    }
+
+    // ---------- The reduction engine: any pitch, any octave -> eight fitted bars ----------
+    // The step after a hum's raw transcribed notes: pad-ready {i, t} pairs out. Arrangement,
+    // not capture - the goal is a tune a four-year-old recognises on an 8-bar diatonic toy,
+    // not a verbatim transcript.
+    const midiFromFreq = (freq) => Math.round(69 + 12 * Math.log2(freq / 440));
+    const SCALE_MIDI = NOTES.map(n => midiFromFreq(n.freq)); // the bars' own pitches, e.g. C5-C6
+    const MAJOR_SCALE_DEGREES = new Set([0, 2, 4, 5, 7, 9, 11]); // semitone offsets from a major tonic
+
+    // Several transcribed notes can overlap (chords, transcription noise); an 8-bar
+    // xylophone can't play them at once anyway, so keep only the highest-pitched note
+    // active at each moment. This "skyline" reduction is the standard, simple way to pull a
+    // monophonic lead melody out of polyphonic input.
+    function skylineMelody(notes) {
+      if (notes.length === 0) return [];
+      const bounds = new Set();
+      notes.forEach(n => { bounds.add(n.start); bounds.add(n.start + n.dur); });
+      const ts = Array.from(bounds).sort((a, b) => a - b);
+      const segments = [];
+      for (let k = 0; k < ts.length - 1; k++) {
+        const t0 = ts[k], t1 = ts[k + 1];
+        let top = null;
+        for (const n of notes) {
+          if (n.start <= t0 && n.start + n.dur >= t1 && (!top || n.midi > top.midi)) top = n;
+        }
+        if (!top) continue;
+        const last = segments[segments.length - 1];
+        if (last && last.note === top && last.end === t0) last.end = t1;
+        else segments.push({ note: top, start: t0, end: t1 });
+      }
+      return segments.map(s => ({ midi: s.note.midi, start: s.start, dur: s.end - s.start, amp: s.note.amp }));
+    }
+
+    // Weighted pitch-class histogram (longer, louder notes count more), correlated against
+    // every possible major-scale tonic. The toy is a fixed major scale, so this only has to
+    // ask "which of the 12 tonics fits this melody best," not distinguish major from minor.
+    function detectTonicPitchClass(melody) {
+      const weight = new Array(12).fill(0);
+      melody.forEach(n => { weight[((n.midi % 12) + 12) % 12] += n.dur * (n.amp ?? 1); });
+      let best = 0, bestScore = -Infinity;
+      for (let tonic = 0; tonic < 12; tonic++) {
+        let score = 0;
+        for (let pc = 0; pc < 12; pc++) {
+          if (MAJOR_SCALE_DEGREES.has(((pc - tonic) + 12) % 12)) score += weight[pc];
+        }
+        if (score > bestScore) { bestScore = score; best = tonic; }
+      }
+      return best;
+    }
+
+    // Among a few whole-octave placements of the (already key-shifted) melody, pick the one
+    // that lands the most note-time inside the bars' actual register - "the transposition
+    // that keeps the most notes in range."
+    function chooseOctaveShift(melody, keyShift) {
+      const candidates = [-24, -12, 0, 12, 24];
+      let best = 0, bestScore = -Infinity;
+      for (const oct of candidates) {
+        let score = 0;
+        melody.forEach(n => {
+          const p = n.midi + keyShift + oct;
+          if (p >= SCALE_MIDI[0] && p <= SCALE_MIDI[SCALE_MIDI.length - 1]) score += n.dur;
+        });
+        if (score > bestScore || (score === bestScore && Math.abs(oct) < Math.abs(best))) { bestScore = score; best = oct; }
+      }
+      return best;
+    }
+
+    // Notes still outside the register after the global shift (a melody spanning more than
+    // an octave) get folded in whole octaves until they land inside it. The register spans a
+    // full octave, so a given pitch class always has at least one (sometimes two, at its
+    // edges) octave placement that lands inside - picking whichever of those is closest to
+    // where the *previous* note landed, rather than each note's own nearest octave
+    // regardless of range, keeps the melody's up/down shape intact instead of zig-zagging
+    // every time it crosses a register boundary. Never landing outside the register also
+    // matters downstream: snapToBars below matches by raw distance, and an out-of-range
+    // pitch can sit closer to the wrong bar than to the right one.
+    function foldToRegister(melody, baseShift) {
+      const lo = SCALE_MIDI[0], hi = SCALE_MIDI[SCALE_MIDI.length - 1];
+      let reference = (lo + hi) / 2;
+      return melody.map(n => {
+        const shifted = n.midi + baseShift;
+        let best = null, bestDist = Infinity;
+        for (let k = -8; k <= 8; k++) {
+          const candidate = shifted + 12 * k;
+          if (candidate < lo || candidate > hi) continue;
+          const dist = Math.abs(candidate - reference);
+          if (dist < bestDist) { bestDist = dist; best = candidate; }
+        }
+        reference = best;
+        return { ...n, midi: best };
+      });
+    }
+
+    // Last step: snap whatever's left (chromatic passing tones, notes the key detector
+    // didn't fully explain) to the nearest bar, and keep an honest tally of how far that
+    // snapping actually moved things.
+    function snapToBars(melody) {
+      let offWeight = 0, totalWeight = 0, offCount = 0;
+      const notes = melody.map(n => {
+        let bestIdx = 0, bestDist = Infinity;
+        SCALE_MIDI.forEach((bar, i) => {
+          const d = Math.abs(bar - n.midi);
+          if (d < bestDist) { bestDist = d; bestIdx = i; }
+        });
+        totalWeight += n.dur;
+        if (bestDist > 0) { offCount++; offWeight += n.dur; }
+        return { i: bestIdx, t: n.start };
+      });
+      return { notes, fit: { total: notes.length, matched: notes.length - offCount, offRatio: totalWeight > 0 ? offWeight / totalWeight : 0 } };
+    }
+
+    function reduceToXylophone(rawNotes) {
+      const melody = skylineMelody(rawNotes.filter(n => n.dur > 0));
+      if (melody.length === 0) return { detected: [], fit: null };
+      const tonic = detectTonicPitchClass(melody);
+      const keyShift = ((0 - tonic) + 12) % 12; // moves the detected tonic onto the bars' own key
+      const octaveShift = chooseOctaveShift(melody, keyShift);
+      const folded = foldToRegister(melody, keyShift + octaveShift);
+      const { notes, fit } = snapToBars(folded);
+      return { detected: notes, fit };
+    }
+
+    // Turns a fit report into the honest sentence the roadmap asks for: silence on a perfect
+    // fit, otherwise how much of the tune needed nudging and how badly.
+    function fitMessage(fit) {
+      if (!fit || fit.matched === fit.total) return null;
+      const offCount = fit.total - fit.matched;
+      const severe = fit.offRatio > 0.25;
+      const lead = severe
+        ? "This tune needs notes your xylophone doesn't have — here's the closest version."
+        : 'Almost a perfect fit.';
+      return `${lead} ${offCount} of ${fit.total} note${offCount === 1 ? '' : 's'} nudged to the nearest bar.`;
     }
 
     const BTN = "font-semibold text-[13px] border border-[#3a3d42] rounded-lg px-[13px] py-[7px] cursor-pointer text-[#e8eaed] bg-[#35383d] hover:bg-[#3f434a] active:translate-y-px disabled:opacity-45 disabled:cursor-not-allowed transition-colors";
@@ -756,6 +905,38 @@
         </dialog>`;
     }
 
+    // Replaces window.prompt/confirm/alert with an in-theme <dialog>. Only mounted while a
+    // modal is queued (rather than kept in the DOM and toggled via open/close like
+    // HelpDialog) so a second <dialog> element never lingers for tests/queries to trip over
+    // once it's dismissed. type is 'prompt' (text input), 'confirm' (Cancel + action), or
+    // 'alert' (message + OK only); onSubmit/onCancel resolve the caller's pending promise.
+    function ActionDialog({ modal, onSubmit, onCancel }) {
+      const dialogRef = useRef(null);
+      const inputRef = useRef(null);
+      useEffect(() => { if (modal && dialogRef.current && !dialogRef.current.open) dialogRef.current.showModal(); }, [modal]);
+      if (!modal) return null;
+      const isPrompt = modal.type === 'prompt';
+      const isAlert = modal.type === 'alert';
+      const toneStyle = modal.tone === 'danger' ? BTN_DANGER : modal.tone === 'amber' ? BTN_AMBER : BTN_PRIMARY;
+      return html`
+        <dialog ref=${dialogRef}
+          class="bg-[#2a2d31] text-[#e8eaed] border border-[#3a3d42] rounded-[12px] p-0 max-w-[420px] w-[92vw] shadow-[0_20px_50px_rgba(0,0,0,.5)] [&::backdrop]:bg-black/60"
+          onCancel=${(e) => { e.preventDefault(); onCancel(); }}
+          onClick=${(e) => { if (e.target === e.currentTarget) onCancel(); }}
+        >
+          <form class="p-5" onSubmit=${(e) => { e.preventDefault(); onSubmit(isPrompt ? inputRef.current.value : true); }}>
+            <p class="text-[14px] leading-[1.5] whitespace-pre-line m-0 mb-3.5">${modal.message}</p>
+            ${isPrompt ? html`
+              <input ref=${inputRef} type="text" defaultValue=${modal.defaultValue || ''} autoFocus=${true}
+                class="w-full font-semibold text-[14px] px-3 py-2 rounded-lg border border-[#3a3d42] bg-[#35383d] text-[#e8eaed] outline-none focus:border-[#12897e] mb-4" />` : null}
+            <div class="flex justify-end gap-2">
+              ${!isAlert ? html`<button type="button" class=${BTN} onClick=${onCancel}>Cancel</button>` : null}
+              <button type="submit" class=${cx(BTN, toneStyle)} autoFocus=${!isPrompt}>${modal.confirmLabel || 'OK'}</button>
+            </div>
+          </form>
+        </dialog>`;
+    }
+
     function App() {
       const [, bump] = useReducer(x => x + 1, 0);
       const forceUpdate = useCallback(() => bump(), []);
@@ -787,10 +968,23 @@
       const [micRunning, setMicRunning] = useState(false);
       const [tip, setTip] = useState(null);
       const [linkHint, setLinkHint] = useState(null);
+      const [modal, setModal] = useState(null);
+
+      // ---------- prompt()/confirm()/alert() replacements, resolved by <${ActionDialog}> ----------
+      function askPrompt(message, defaultValue) {
+        return new Promise(resolve => setModal({ type: 'prompt', message, defaultValue, resolve }));
+      }
+      function askConfirm(message, opts = {}) {
+        return new Promise(resolve => setModal({ type: 'confirm', message, confirmLabel: opts.confirmLabel, tone: opts.tone, resolve }));
+      }
+      function showAlert(message) {
+        return new Promise(resolve => setModal({ type: 'alert', message, resolve }));
+      }
+      function submitModal(value) { setModal(m => { m.resolve(value); return null; }); }
+      function cancelModal() { setModal(m => { m.resolve(m.type === 'prompt' ? null : false); return null; }); }
 
       const barRefs = useRef([]);
       const padRef = useRef(null);
-      const fileInputRef = useRef(null);
       const dialogRef = useRef(null);
 
       // Armed-note hint: a fixed-position tooltip (never part of document flow, so it can
@@ -1072,14 +1266,15 @@
         scrollAfterRender({ type: 'caret' });
         e.target.blur();
       }
-      function saveSong() {
-        if (!hasNotes(s.lines)) { alert('Play or write some notes before saving a song.'); return; }
-        const name = prompt('Song name:', currentSongName || '');
+      async function saveSong() {
+        if (!hasNotes(s.lines)) { await showAlert('Play or write some notes before saving a song.'); return; }
+        const name = await askPrompt('Song name:', currentSongName || '');
         if (name === null) return;
         const trimmed = name.trim();
         if (!trimmed) return;
         if (savedSongs[trimmed] && trimmed !== currentSongName) {
-          if (!confirm(`"${trimmed}" already exists. Overwrite it?`)) return;
+          const ok = await askConfirm(`"${trimmed}" already exists. Overwrite it?`, { confirmLabel: 'Overwrite', tone: 'amber' });
+          if (!ok) return;
         }
         const next = { ...savedSongs, [trimmed]: { lines: cloneLines(s.lines) } };
         setSavedSongs(next);
@@ -1087,9 +1282,10 @@
         setCurrentSong(trimmed);
         selectTuneOption('song', trimmed);
       }
-      function deleteSong() {
+      async function deleteSong() {
         if (!currentSongName) return;
-        if (!confirm(`Delete "${currentSongName}"?`)) return;
+        const ok = await askConfirm(`Delete "${currentSongName}"?`, { confirmLabel: 'Delete', tone: 'danger' });
+        if (!ok) return;
         const next = { ...savedSongs };
         delete next[currentSongName];
         setSavedSongs(next);
@@ -1119,103 +1315,69 @@
         scrollAfterRender({ type: 'caret' });
       }
 
-      // ---------- mic humming ----------
-      const micStateRef = useRef({ stream: null, analyser: null, raf: null, lastNote: -1, stableCount: 0, lastAddTime: 0, lastNoteRef: null });
+      // ---------- Getting songs in: hum it, then transcribe ----------
+      // A hummed/sung recording is one clean voice with nothing else in it to confuse the
+      // reduction engine's melody-picking - Basic Pitch transcribes it, then reduceToXylophone
+      // fits the result onto eight bars.
+      const micStateRef = useRef({ stream: null, recorder: null, chunks: [], stopTimer: null });
+      const [transcribing, setTranscribing] = useState(false);
+      const [progress, setProgress] = useState(0);
+      const [fitNote, setFitNote] = useState(null);
+      const busy = transcribing;
+      const MAX_HUM_MS = 45000; // a toy tune is short; caps a forgotten recording rather than growing forever
+
+      async function transcribeIntoPad(blob) {
+        setTranscribing(true);
+        setProgress(0);
+        try {
+          const ac = ctx();
+          const arrayBuf = await blob.arrayBuffer();
+          const audioBuf = await ac.decodeAudioData(arrayBuf);
+          const rawNotes = await transcribeAudioBuffer(audioBuf, setProgress);
+          const { detected, fit } = reduceToXylophone(rawNotes);
+          if (detected.length === 0) {
+            await showAlert("Couldn't find a clear melody in that recording. A single voice or instrument works best.");
+            return;
+          }
+          // Transcription is async and can finish well after it started - pause first in case
+          // the pad is still mid-playback of whatever was loaded before, so the player's
+          // in-flight step() never indexes into the lines loadDetected is about to replace.
+          finishPlayback();
+          s.lastLiveNote = null;
+          loadDetected(detected);
+          setFitNote(fitMessage(fit));
+        } catch (err) {
+          console.error(err);
+          await showAlert("Couldn't transcribe that audio. Try a clearer recording.");
+        } finally {
+          setTranscribing(false);
+        }
+      }
+
       async function startMic() {
         let stream;
         try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-        catch { alert("Couldn't access the microphone. Check the browser's permission settings."); return; }
-        const ac = ctx();
-        const micSource = ac.createMediaStreamSource(stream);
-        const analyser = ac.createAnalyser();
-        analyser.fftSize = 2048;
-        micSource.connect(analyser);
-        const m = micStateRef.current;
-        m.stream = stream; m.analyser = analyser;
-        m.lastNote = -1; m.stableCount = 0; m.lastAddTime = 0; m.lastNoteRef = null;
+        catch { await showAlert("Couldn't access the microphone. Check the browser's permission settings."); return; }
+        const chunks = [];
+        const recorder = new MediaRecorder(stream);
+        recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+        micStateRef.current = { stream, recorder, chunks, stopTimer: setTimeout(stopMic, MAX_HUM_MS) };
+        recorder.start();
         setMicRunning(true);
-        finishPlayback();
-        s.lastLiveNote = null;
-        s.lines = [{ notes: [], lyric: '' }];
-        s.cursor = { line: 0, pos: 0 };
-        setCurrentSong(null);
-        selectTuneOption(null);
-        scrollAfterRender({ type: 'caret' });
-        const buf = new Float32Array(analyser.fftSize);
-        function loop() {
-          const mm = micStateRef.current;
-          if (!mm.stream) return;
-          mm.analyser.getFloatTimeDomainData(buf);
-          const freq = autoCorrelate(buf, ac.sampleRate);
-          if (freq > 0 && freq < 1200) {
-            const idx = freqToNoteIndex(freq);
-            if (idx === mm.lastNote) { mm.stableCount++; } else { mm.lastNote = idx; mm.stableCount = 1; }
-            const now = performance.now();
-            if (mm.stableCount === 4 && now - mm.lastAddTime > 280) {
-              if (mm.lastNoteRef) {
-                const gapSec = (now - mm.lastAddTime) / 1000;
-                mm.lastNoteRef.sec = clamp(gapSec, MIN_LIVE_GAP_SEC, MAX_PAUSE_SEC);
-                if (gapSec > PHRASE_BREAK_SEC) s.lines.push({ notes: [], lyric: '' });
-              }
-              const cur = s.lines[s.lines.length - 1];
-              if (cur.notes.length >= 8) s.lines.push({ notes: [], lyric: '' });
-              const note = { i: idx, sec: QUARTER_SEC };
-              s.lines[s.lines.length - 1].notes.push(note);
-              mm.lastNoteRef = note;
-              s.cursor = { line: s.lines.length - 1, pos: s.lines[s.lines.length - 1].notes.length };
-              scrollAfterRender({ type: 'caret' });
-              playNote(idx, soundTypeRef.current, barRefs.current);
-              mm.lastAddTime = now;
-            }
-          }
-          mm.raf = requestAnimationFrame(loop);
-        }
-        loop();
       }
       function stopMic() {
         const m = micStateRef.current;
-        if (m.raf) cancelAnimationFrame(m.raf);
-        if (m.stream) m.stream.getTracks().forEach(t => t.stop());
-        m.stream = null;
+        if (!m.recorder || m.recorder.state === 'inactive') return;
+        clearTimeout(m.stopTimer);
         setMicRunning(false);
+        const mimeType = m.recorder.mimeType;
+        m.recorder.onstop = () => {
+          m.stream.getTracks().forEach(t => t.stop());
+          transcribeIntoPad(new Blob(m.chunks, { type: mimeType }));
+        };
+        m.recorder.stop();
       }
       function onMicClick() { micRunning ? stopMic() : startMic(); }
-
-      async function onFileChange(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        try {
-          const ac = ctx();
-          const arrayBuf = await file.arrayBuffer();
-          const audioBuf = await ac.decodeAudioData(arrayBuf);
-          const channel = audioBuf.getChannelData(0);
-          const sr = audioBuf.sampleRate;
-          const winSize = 2048, hop = 1024;
-          const detected = [];
-          let lastN = -1, stable = 0;
-          for (let start = 0; start + winSize < channel.length; start += hop) {
-            const frame = channel.subarray(start, start + winSize);
-            const freq = autoCorrelate(frame, sr);
-            if (freq > 60 && freq < 1200) {
-              const idx = freqToNoteIndex(freq);
-              if (idx === lastN) { stable++; } else { lastN = idx; stable = 1; }
-              if (stable === 3) {
-                const t = start / sr;
-                if (detected.length === 0 || detected[detected.length - 1].i !== idx) detected.push({ i: idx, t });
-              }
-            } else { lastN = -1; stable = 0; }
-            if (detected.length >= 48) break;
-          }
-          if (detected.length === 0) {
-            alert("Couldn't find a clear melody. Songs with many instruments are hard to read; try a hummed or a cappella recording.");
-          } else {
-            loadDetected(detected);
-          }
-        } catch (err) {
-          alert("Couldn't read that audio file. MP3 or WAV work best.");
-        }
-        e.target.value = '';
-      }
 
       // ---------- keyboard ----------
       useEffect(() => {
@@ -1267,11 +1429,10 @@
           <header class="flex items-center justify-between gap-3 flex-wrap mb-3.5 shrink-0">
             <h1 class="text-[18px] font-bold m-0 tracking-[.2px]">Xylotune</h1>
             <div class="flex gap-2 flex-wrap items-center">
-              <button class=${cx(BTN, micRunning && BTN_DANGER)} onClick=${onMicClick}>${micRunning ? '⏹ Stop' : '🎤 Hum it'}</button>
-              <button class=${BTN} onClick=${() => fileInputRef.current.click()}>📁 Upload</button>
-              <input ref=${fileInputRef} type="file" accept="audio/*" class="hidden" onChange=${onFileChange} />
+              <button class=${cx(BTN, micRunning && BTN_DANGER)} disabled=${busy} onClick=${onMicClick}>${micRunning ? '⏹ Stop' : '🎤 Hum it'}</button>
+              ${busy ? html`<span class="text-[13px] text-[#9aa0a6] font-semibold">⏳ Transcribing… ${Math.round(progress * 100)}%</span>` : null}
               <select class="font-semibold text-[13px] px-2.5 py-[7px] rounded-lg border border-[#3a3d42] bg-[#35383d] text-[#e8eaed]"
-                value=${tuneValue} onChange=${onTuneChange}>
+                disabled=${busy} value=${tuneValue} onChange=${onTuneChange}>
                 <option value="">Pick a tune…</option>
                 <optgroup label="Built-in">
                   ${Object.keys(EXAMPLES).map(name => html`<option key=${name} value=${'example:' + name}>${name}</option>`)}
@@ -1304,6 +1465,13 @@
                   <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
                 </svg>
               </button>
+
+              ${fitNote ? html`
+                <div class="text-[12.5px] text-[#e8c468] bg-[rgba(58,48,5,.4)] border border-[#59481a] rounded-lg px-3 py-2 mb-2.5 pr-10 shrink-0 flex items-start justify-between gap-2">
+                  <span>${fitNote}</span>
+                  <button type="button" class="text-[#e8c468] hover:text-white border-0 bg-transparent cursor-pointer leading-none text-[15px] shrink-0"
+                    aria-label="Dismiss" onClick=${() => setFitNote(null)}>×</button>
+                </div>` : null}
 
               <div class="flex items-center gap-2 flex-wrap mb-2.5 pr-10 shrink-0">
                 <button class=${cx(BTN, BTN_PRIMARY)} disabled=${noNotes}
@@ -1350,10 +1518,16 @@
           <${GapTooltip} tip=${tip} />
           <${GapTooltip} tip=${linkHint} />
           <${HelpDialog} dialogRef=${dialogRef} />
+          <${ActionDialog} modal=${modal} onSubmit=${submitModal} onCancel=${cancelModal} />
         </div>`;
     }
 
     ReactDOM.createRoot(document.getElementById('root')).render(html`<${App} />`);
+
+    // Test-only hook: the reduction engine is pure and deterministic, so Playwright can
+    // exercise it directly with synthetic note data instead of routing real audio through
+    // Basic Pitch. Not used by the app itself.
+    window.__xyloTest = { skylineMelody, detectTonicPitchClass, chooseOctaveShift, foldToRegister, snapToBars, reduceToXylophone, fitMessage, SCALE_MIDI, midiFromFreq };
   </script>
 </body>
 
