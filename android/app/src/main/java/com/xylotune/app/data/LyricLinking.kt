@@ -22,7 +22,7 @@ fun collectLineTags(notes: List<NoteEvent>): List<LyricTag> =
         .map { (ni, n) -> LyricTag(start = n.lyricStart!!, end = n.lyricEnd!!, noteIdx = ni, noteSpan = n.lyricSpan ?: 1) }
         .sortedBy { it.start }
 
-fun stripLyricTags(notes: MutableList<NoteEvent>, indices: Collection<Int>) {
+fun stripLyricTags(notes: MutableList<NoteEvent>, indices: Iterable<Int>) {
     indices.forEach { i ->
         notes[i] = notes[i].copy(lyricStart = null, lyricEnd = null, lyricSpan = null)
     }
