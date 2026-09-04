@@ -16,6 +16,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.unit.dp
 import com.xylotune.app.ui.theme.BorderSubtle
 import com.xylotune.app.ui.theme.SurfaceControl
@@ -29,6 +30,7 @@ fun SongPickerBar(
     selected: String?,
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box(modifier = modifier) {
@@ -37,9 +39,10 @@ fun SongPickerBar(
             color = TextPrimary,
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier
+                .alpha(if (enabled) 1f else 0.45f)
                 .border(1.dp, BorderSubtle, RoundedCornerShape(10.dp))
                 .background(SurfaceControl, RoundedCornerShape(10.dp))
-                .clickable { expanded = true }
+                .then(if (enabled) Modifier.clickable { expanded = true } else Modifier)
                 .padding(horizontal = 12.dp, vertical = 7.dp),
         )
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {

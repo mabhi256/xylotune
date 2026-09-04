@@ -17,6 +17,7 @@ import com.xylotune.app.data.loadSoundPref
 import com.xylotune.app.data.saveSoundPref
 import com.xylotune.app.model.Song
 import com.xylotune.app.player.Playback
+import com.xylotune.app.player.PracticeEngine
 import com.xylotune.app.ui.composer.PadScreen
 import com.xylotune.app.ui.composer.PlayTab
 import com.xylotune.app.ui.dialogs.ActionDialogHost
@@ -44,6 +45,7 @@ fun MainScreen() {
         Playback(pad = pad, scope = scope, onPlayNote = { noteIndex, _ -> AudioEngine.playNote(noteIndex, material) })
             .also { p -> pad.onBeforeEdit = { p.finish() } }
     }
+    val practice = remember { PracticeEngine(pad) }
 
     var savedSongs by remember { mutableStateOf(SongRepository.loadSongs(context)) }
     var currentSongName by remember { mutableStateOf<String?>(null) }
@@ -54,6 +56,7 @@ fun MainScreen() {
             Tab.Play -> PlayTab(
                 pad = pad,
                 playback = playback,
+                practice = practice,
                 material = material,
                 onMaterialChange = {
                     material = it
@@ -62,10 +65,12 @@ fun MainScreen() {
                 songNames = savedSongs.keys.toList(),
                 currentSongName = currentSongName,
                 onSelectSong = { name ->
-                    savedSongs[name]?.let { song ->
-                        playback.finish()
-                        pad.replaceAll(song.lines)
-                        currentSongName = name
+                    if (!practice.active) {
+                        savedSongs[name]?.let { song ->
+                            playback.finish()
+                            pad.replaceAll(song.lines)
+                            currentSongName = name
+                        }
                     }
                 },
                 onSave = {
@@ -79,6 +84,7 @@ fun MainScreen() {
                 pad = pad,
                 material = material,
                 playback = playback,
+                practice = practice,
                 canDeleteSong = currentSongName != null,
                 onDeleteSong = {
                     scope.launch {
