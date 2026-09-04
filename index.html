@@ -370,8 +370,10 @@
       try { localStorage.setItem('xyloSongs', JSON.stringify(songs)); }
       catch { /* ignore, e.g. storage disabled */ }
     }
+    // Snaps sec to the same 0.1s dot grid the dot editor already uses, so a note captured
+    // live (raw elapsed time) ends up stored with the exact value its dots display.
     function cloneLines(ls) {
-      return ls.map(l => ({ lyric: l.lyric, notes: l.notes.map(n => ({ ...n })) }));
+      return ls.map(l => ({ lyric: l.lyric, notes: l.notes.map(n => ({ ...n, sec: dotCount(n) * REST_UNIT_SEC })) }));
     }
 
     // ---------- Google Drive sync: one JSON file in the user's own Drive ----------

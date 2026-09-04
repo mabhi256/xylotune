@@ -22,12 +22,17 @@ class PadLine(notes: List<NoteEvent> = emptyList(), lyric: String = "") {
     val notes: SnapshotStateList<NoteEvent> = mutableStateListOf(*notes.toTypedArray())
     var lyric: String by mutableStateOf(lyric)
 
-    fun toModel(): Line = Line(notes = notes.toList(), lyric = lyric)
+    fun toModel(): Line = Line(notes = notes.map(::snappedToGrid), lyric = lyric)
 
     companion object {
-        fun fromModel(line: Line): PadLine = PadLine(line.notes, line.lyric)
+        fun fromModel(line: Line): PadLine = PadLine(line.notes.map(::snappedToGrid), line.lyric)
     }
 }
+
+// Snaps sec to the same 0.1s dot grid the dot editor already uses (mirrors index.html's
+// cloneLines), so a note captured live (raw elapsed time) is stored/loaded with the exact
+// value its dots display, both on save and on loading a song back into the pad.
+private fun snappedToGrid(note: NoteEvent): NoteEvent = note.copy(sec = dotCount(note) * REST_UNIT_SEC)
 
 /**
  * Ported from index.html's pad mutation functions (strike/newLine/backspace/
