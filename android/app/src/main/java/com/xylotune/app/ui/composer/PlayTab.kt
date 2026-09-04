@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.xylotune.app.audio.AudioEngine
 import com.xylotune.app.audio.SoundMaterial
+import com.xylotune.app.data.DriveStatus
 import com.xylotune.app.data.PadState
 import com.xylotune.app.player.Playback
 import com.xylotune.app.player.PracticeEngine
@@ -33,6 +34,7 @@ import com.xylotune.app.ui.common.DrawerHandle
 import com.xylotune.app.ui.common.DrawerPanel
 import com.xylotune.app.ui.common.HUD_CLEARANCE
 import com.xylotune.app.ui.common.HudIconButton
+import com.xylotune.app.ui.drive.DriveStatusButton
 import com.xylotune.app.ui.songs.SongPickerBar
 import com.xylotune.app.ui.theme.AccentBlue
 import com.xylotune.app.ui.theme.AccentDanger
@@ -67,6 +69,8 @@ fun PlayTab(
     onSelectSong: (String) -> Unit,
     onSave: () -> Unit,
     onSwitchToSheet: () -> Unit,
+    driveStatus: DriveStatus,
+    onDriveClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val isReady by AudioEngine.isReady.collectAsState()
@@ -106,6 +110,7 @@ fun PlayTab(
             modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            DriveStatusButton(status = driveStatus, onClick = onDriveClick)
             HudIconButton(icon = "💾", description = "Save song", onClick = onSave, enabled = !practice.active)
             HudIconButton(icon = "📄", description = "Switch to Sheet tab", onClick = onSwitchToSheet)
         }

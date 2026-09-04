@@ -73,6 +73,10 @@ dependencies {
 
     implementation("com.google.oboe:oboe:1.10.0")
 
+    implementation("com.google.android.gms:play-services-auth:22.0.0")
+    implementation("com.squareup.okhttp3:okhttp:5.5.0")
+
     testImplementation("junit:junit:4.13.2")
+    testImplementation("com.squareup.okhttp3:mockwebserver:5.5.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
 }
