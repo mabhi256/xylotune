@@ -1,0 +1,13 @@
+*.iml
+.gradle/
+.idea/
+.DS_Store
+# Unanchored (no leading slash) so this matches every module's build/ dir, not just the
+# root project's — an earlier "/build" here silently let android/app/build/ (200+
+# generated .class/.so/asset-copy files) go untracked-but-not-ignored.
+build/
+/captures
+.externalNativeBuild/
+.cxx/
+local.properties
+*.hprof
