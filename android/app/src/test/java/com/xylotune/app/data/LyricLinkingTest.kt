@@ -74,4 +74,26 @@ class LyricLinkingTest {
         assertNull(notes[0].lyricStart)
         assertTrue(notes[1].lyricStart == 2)
     }
+
+    // tokenizeLyric feeds the Sheet tab's tap-to-link word chips (see LyricRow) — the
+    // mobile replacement for the web's mouse drag-select, so a tapped word's [start, end)
+    // must line up exactly with what linkLyricSelection expects.
+    @Test
+    fun `tokenizeLyric splits on whitespace and reports exact char offsets`() {
+        val words = tokenizeLyric("Twinkle  twinkle little")
+        assertEquals(3, words.size)
+        assertEquals(LyricWord(0, 7, "Twinkle"), words[0])
+        assertEquals(LyricWord(9, 16, "twinkle"), words[1])
+        assertEquals(LyricWord(17, 23, "little"), words[2])
+        // the offsets must be usable straight in linkLyricSelection
+        val notes = mutableListOf(note(0))
+        linkLyricSelection(notes, noteStart = 0, noteEnd = 0, charStart = words[1].start, charEnd = words[1].end)
+        assertEquals("twinkle", "Twinkle  twinkle little".substring(notes[0].lyricStart!!, notes[0].lyricEnd!!))
+    }
+
+    @Test
+    fun `tokenizeLyric returns nothing for blank text`() {
+        assertTrue(tokenizeLyric("").isEmpty())
+        assertTrue(tokenizeLyric("   ").isEmpty())
+    }
 }

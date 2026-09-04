@@ -26,7 +26,6 @@ import com.xylotune.app.ui.theme.TextSecondary
 
 private val BAR_GAP = 10.dp
 private val BAR_HIT_EXPANSION = 6.dp
-private val BAR_HEIGHT = 260.dp
 private val BOARD_HORIZONTAL_PADDING = 8.dp
 
 /**
@@ -39,6 +38,10 @@ private val BOARD_HORIZONTAL_PADDING = 8.dp
  * Each [Bar] child stays pointer-input-free; this composable hit-tests presses itself via
  * [MultiTouchBarTracker] and calls [onStrike] directly, independently, for every pointer
  * that lands on a bar — including two that land in the same event batch.
+ *
+ * The bars row is `weight(1f)` within this composable's own Column, so it fills whatever
+ * height `modifier` is given (typically `Modifier.weight(1f)` from the caller's Column) —
+ * there is no fixed bar height to overflow a short landscape viewport.
  */
 @Composable
 fun XylophoneBoard(
@@ -61,6 +64,7 @@ fun XylophoneBoard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .weight(1f)
                 .padding(horizontal = BOARD_HORIZONTAL_PADDING)
                 .pointerInput(Unit) {
                     awaitPointerEventScope {
@@ -93,7 +97,6 @@ fun XylophoneBoard(
                     index = index,
                     isTarget = index == targetIndex,
                     strikeId = strikeIds[index],
-                    heightDp = BAR_HEIGHT,
                     modifier = Modifier
                         .weight(1f)
                         .onGloballyPositioned { coordinates ->

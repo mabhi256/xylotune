@@ -2,6 +2,7 @@ package com.xylotune.app.data
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -142,6 +143,38 @@ class PadStateTest {
         assertFalse(pad.hasAnyNotes())
         pad.strike(0, nowMs = 0)
         assertTrue(pad.hasAnyNotes())
+    }
+
+    @Test
+    fun `setLyricText stores the text and strips any existing tags on the line`() {
+        val pad = PadState()
+        pad.strike(0, nowMs = 0)
+        pad.linkLyric(0, noteStart = 0, noteEnd = 0, charStart = 0, charEnd = 2)
+        pad.setLyricText(0, "hi there")
+        assertEquals("hi there", pad.lines[0].lyric)
+        assertNull(pad.lines[0].notes[0].lyricStart) // any edit voids the line's tags
+    }
+
+    @Test
+    fun `linkLyric anchors a tag on the given note range`() {
+        val pad = PadState()
+        pad.strike(0, nowMs = 0)
+        pad.strike(1, nowMs = 100)
+        pad.setLyricText(0, "hi there")
+        pad.linkLyric(0, noteStart = 0, noteEnd = 1, charStart = 0, charEnd = 2)
+        assertEquals(0, pad.lines[0].notes[0].lyricStart)
+        assertEquals(2, pad.lines[0].notes[0].lyricEnd)
+        assertEquals(2, pad.lines[0].notes[0].lyricSpan)
+    }
+
+    @Test
+    fun `unlinkLyric clears exactly the tag anchored at the given note`() {
+        val pad = PadState()
+        pad.strike(0, nowMs = 0)
+        pad.setLyricText(0, "hi")
+        pad.linkLyric(0, noteStart = 0, noteEnd = 0, charStart = 0, charEnd = 2)
+        pad.unlinkLyric(0, 0)
+        assertNull(pad.lines[0].notes[0].lyricStart)
     }
 
     @Test

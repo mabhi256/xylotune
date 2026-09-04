@@ -19,8 +19,12 @@ import com.xylotune.app.ui.theme.TextMuted
 
 /**
  * One line of the Sheet tab's editor. Ported from index.html's PadLine — note chips and
- * their trailing gap-dots, interleaved with a blinking caret at the cursor position (lyric
- * captions/linking land in M3's LyricCaption.kt, not here).
+ * their trailing gap-dots, interleaved with a blinking caret at the cursor position.
+ *
+ * [linkArmed] repurposes a note tap while lyric linking is armed (see LinkToggleButton):
+ * instead of placing the edit cursor, it arms that note for [onArmNote] to pair with the
+ * next lyric word tap. [armedNoteIndex] is this line's own armed note, if any — a chip only
+ * shows the dashed "armed" ring for the exact note the caller has staged.
  */
 @Composable
 fun PadLineRow(
@@ -34,6 +38,9 @@ fun PadLineRow(
     onSetGapSec: (lineIndex: Int, noteIndex: Int, sec: Double) -> Unit,
     onGrowGap: (lineIndex: Int, noteIndex: Int) -> Unit,
     modifier: Modifier = Modifier,
+    linkArmed: Boolean = false,
+    armedNoteIndex: Int? = null,
+    onArmNote: (lineIndex: Int, noteIndex: Int) -> Unit = { _, _ -> },
 ) {
     Row(
         modifier = modifier
@@ -50,7 +57,10 @@ fun PadLineRow(
                     note = note,
                     material = material,
                     playing = playing,
-                    onClick = { onPlaceCursor(lineIndex, ni + 1) },
+                    armed = linkArmed && armedNoteIndex == ni,
+                    onClick = {
+                        if (linkArmed) onArmNote(lineIndex, ni) else onPlaceCursor(lineIndex, ni + 1)
+                    },
                 )
             }
             GapDots(

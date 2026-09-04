@@ -59,3 +59,18 @@ fun linkLyricSelection(notes: MutableList<NoteEvent>, noteStart: Int, noteEnd: I
         lyricSpan = noteEnd - noteStart + 1,
     )
 }
+
+/**
+ * Mobile has no mouse-drag text selection, so [linkLyricSelection]'s char range comes from
+ * tapping whole words instead: the lyric caption is tokenized into [LyricWord]s and a tap
+ * targets one, keeping the exact same charStart/charEnd-anchored tag shape (and therefore
+ * the same JSON) the web's drag-select produces.
+ */
+data class LyricWord(val start: Int, val end: Int, val text: String)
+
+private val WORD_PATTERN = Regex("\\S+")
+
+fun tokenizeLyric(text: String): List<LyricWord> =
+    WORD_PATTERN.findAll(text)
+        .map { m -> LyricWord(start = m.range.first, end = m.range.last + 1, text = m.value) }
+        .toList()

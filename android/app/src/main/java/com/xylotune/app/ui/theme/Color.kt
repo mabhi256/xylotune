@@ -50,6 +50,9 @@ val BorderSubtle = Color(0xFF3A3D42)
 val TextPrimary = Color(0xFFE8EAED)
 val TextSecondary = Color(0xFF9AA0A6)
 val TextMuted = Color(0xFF6F7479)
+// index.html's `.lyric` caption color — distinct from TextMuted, kept separate rather than
+// reusing it so an untagged lyric word doesn't silently drift if TextMuted's own role changes.
+val TextLyric = Color(0xFF84898E)
 
 val AccentTeal = Color(0xFF12897E)
 val AccentAmber = Color(0xFFB9691C)

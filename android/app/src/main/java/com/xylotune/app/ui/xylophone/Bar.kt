@@ -11,8 +11,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -31,7 +31,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xylotune.app.audio.SoundMaterial
@@ -39,6 +38,11 @@ import com.xylotune.app.audio.SoundMaterial
 // Dumb and pointer-input-free by design (see the plan's Risk Area 1): all touch handling
 // lives on the shared listener in XylophoneBoard, never here — a per-Bar pointerInput
 // modifier is exactly what breaks independent two-thumb multitouch in Compose.
+//
+// Height comes from `fillMaxHeight()`, not a fixed dp: XylophoneBoard gives the bars row a
+// `weight(1f)` slot, so the bars always claim whatever vertical space the screen has left
+// after its own header/drawer chrome, on any device, instead of a constant that could
+// overflow a short landscape viewport.
 @Composable
 fun Bar(
     label: String,
@@ -47,7 +51,6 @@ fun Bar(
     index: Int,
     isTarget: Boolean,
     strikeId: Int,
-    heightDp: Dp,
     modifier: Modifier = Modifier,
 ) {
     // 0 = normal (bar's own color, scale 1); 1 = freshly struck (brighter mix, scale
@@ -86,7 +89,7 @@ fun Bar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(heightDp)
+            .fillMaxHeight()
             .scale(scaleAmount)
             .then(if (isTarget) Modifier.border(3.dp, Color.White, shape) else Modifier)
             .clip(shape)

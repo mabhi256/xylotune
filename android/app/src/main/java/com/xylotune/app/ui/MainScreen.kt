@@ -1,14 +1,7 @@
 package com.xylotune.app.ui
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,8 +25,13 @@ import kotlinx.coroutines.launch
 
 private enum class Tab { Play, Sheet }
 
-/** Top app bar + Play/Sheet bottom tabs, hoisting the PadState/Playback both tabs share. */
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Play/Sheet, hoisting the PadState/Playback both tabs share. No Scaffold, no top app bar
+ * or bottom nav: each tab is full-bleed, with its own song/save/delete/tab-switch controls
+ * floating as HUD chips (see PlayTab/PadScreen) — a persistent title bar plus a labeled
+ * NavigationBar cost real, fixed dp that a fixed-height board no longer has to share a
+ * short landscape viewport with, but every other tab still paid for.
+ */
 @Composable
 fun MainScreen() {
     val context = LocalContext.current
@@ -51,62 +49,45 @@ fun MainScreen() {
     var currentSongName by remember { mutableStateOf<String?>(null) }
     var tab by remember { mutableStateOf(Tab.Play) }
 
-    Scaffold(
-        topBar = { TopAppBar(title = { Text("Xylotune") }) },
-        bottomBar = {
-            NavigationBar {
-                NavigationBarItem(
-                    selected = tab == Tab.Play,
-                    onClick = { tab = Tab.Play },
-                    icon = { Text("🎵") },
-                    label = { Text("Play") },
-                )
-                NavigationBarItem(
-                    selected = tab == Tab.Sheet,
-                    onClick = { tab = Tab.Sheet },
-                    icon = { Text("📄") },
-                    label = { Text("Sheet") },
-                )
-            }
-        },
-    ) { innerPadding ->
-        Box(modifier = Modifier.padding(innerPadding)) {
-            when (tab) {
-                Tab.Play -> PlayTab(
-                    pad = pad,
-                    playback = playback,
-                    material = material,
-                    onMaterialChange = {
-                        material = it
-                        saveSoundPref(context, it)
-                    },
-                    songNames = savedSongs.keys.toList(),
-                    currentSongName = currentSongName,
-                    onSelectSong = { name ->
-                        savedSongs[name]?.let { song ->
-                            playback.finish()
-                            pad.replaceAll(song.lines)
-                            currentSongName = name
-                        }
-                    },
-                    onSave = {
-                        scope.launch {
-                            saveSong(pad, dialogHost, currentSongName, savedSongs, { savedSongs = it }, { currentSongName = it }, context)
-                        }
-                    },
-                )
-                Tab.Sheet -> PadScreen(
-                    pad = pad,
-                    material = material,
-                    playback = playback,
-                    canDeleteSong = currentSongName != null,
-                    onDeleteSong = {
-                        scope.launch {
-                            deleteSong(pad, playback, dialogHost, currentSongName, savedSongs, { savedSongs = it }, { currentSongName = it }, context)
-                        }
-                    },
-                )
-            }
+    Box(modifier = Modifier.fillMaxSize()) {
+        when (tab) {
+            Tab.Play -> PlayTab(
+                pad = pad,
+                playback = playback,
+                material = material,
+                onMaterialChange = {
+                    material = it
+                    saveSoundPref(context, it)
+                },
+                songNames = savedSongs.keys.toList(),
+                currentSongName = currentSongName,
+                onSelectSong = { name ->
+                    savedSongs[name]?.let { song ->
+                        playback.finish()
+                        pad.replaceAll(song.lines)
+                        currentSongName = name
+                    }
+                },
+                onSave = {
+                    scope.launch {
+                        saveSong(pad, dialogHost, currentSongName, savedSongs, { savedSongs = it }, { currentSongName = it }, context)
+                    }
+                },
+                onSwitchToSheet = { tab = Tab.Sheet },
+            )
+            Tab.Sheet -> PadScreen(
+                pad = pad,
+                material = material,
+                playback = playback,
+                canDeleteSong = currentSongName != null,
+                onDeleteSong = {
+                    scope.launch {
+                        deleteSong(pad, playback, dialogHost, currentSongName, savedSongs, { savedSongs = it }, { currentSongName = it }, context)
+                    }
+                },
+                onSwitchToPlay = { tab = Tab.Play },
+                songName = currentSongName,
+            )
         }
         ActionDialogHost(dialogHost)
     }

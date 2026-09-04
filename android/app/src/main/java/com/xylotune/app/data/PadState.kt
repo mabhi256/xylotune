@@ -211,6 +211,27 @@ class PadState {
         cursor = Cursor(lineIndex, pos)
     }
 
+    // Ported from index.html's LyricCaption handleInput: free-typed text can't be safely
+    // re-mapped onto the old char offsets, so any edit voids that line's links outright
+    // rather than risk a stale link pointing at the wrong word.
+    fun setLyricText(lineIndex: Int, text: String) {
+        onBeforeEdit()
+        val line = lines[lineIndex]
+        line.lyric = text
+        stripLyricTags(line.notes, line.notes.indices)
+    }
+
+    /** Links notes[noteStart..noteEnd] on lineIndex to lyric[charStart, charEnd). */
+    fun linkLyric(lineIndex: Int, noteStart: Int, noteEnd: Int, charStart: Int, charEnd: Int) {
+        onBeforeEdit()
+        linkLyricSelection(lines[lineIndex].notes, noteStart, noteEnd, charStart, charEnd)
+    }
+
+    fun unlinkLyric(lineIndex: Int, noteIdx: Int) {
+        onBeforeEdit()
+        stripLyricTags(lines[lineIndex].notes, listOf(noteIdx))
+    }
+
     private fun mergeNextLineInto(line: PadLine) {
         val next = lines[cursor.line + 1]
         stripLyricTags(next.notes, next.notes.indices)
