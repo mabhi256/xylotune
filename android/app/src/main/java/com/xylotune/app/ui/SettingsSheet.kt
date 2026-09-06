@@ -49,11 +49,13 @@ fun SettingsSheet(
     speedPercent: Int,
     speedEnabled: Boolean,
     canDelete: Boolean,
+    canClear: Boolean,
     onBpmChange: (Int) -> Unit,
     onMeterCycle: () -> Unit,
     onSpeedChange: (Int) -> Unit,
     onSave: () -> Unit,
     onDelete: () -> Unit,
+    onClear: () -> Unit,
     driveStatus: DriveStatus,
     onDriveClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -123,6 +125,7 @@ fun SettingsSheet(
 
         ActionRow("Save song", onClick = onSave)
         ActionRow("Delete song", onClick = onDelete, enabled = canDelete, danger = true)
+        ActionRow("Clear sheet", onClick = onClear, enabled = canClear, danger = true)
 
         Divider()
 

@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -38,12 +39,15 @@ import com.xylotune.app.ui.theme.PaperEdge
 import com.xylotune.app.ui.theme.PaperFill
 
 private val SIXTEENTH_WIDTH = 22.dp // one sprocket hole; a tick is this / TICKS_PER_DOT
-private val PEG_WIDTH = 20.dp
-private val PEG_HEIGHT = 15.dp
-private val CELL_WIDTH = 26.dp // peg width plus a little breathing room for its number/word
+private val PEG_WIDTH = 26.dp
+private val PEG_HEIGHT = 22.dp
+private val CELL_WIDTH = 30.dp // peg width plus a little breathing room for its trailing word
 private val SEAM_WIDTH = 10.dp
 private val ROLL_HEIGHT = 92.dp
-private const val PITCH_STEP_DP = 11f // vertical spread between adjacent bars' pegs
+private val PITCH_TOP_MARGIN = 3.dp // clearance above the highest peg
+private val WORD_GAP = 2.dp
+private val WORD_ROW_HEIGHT = 15.dp // reserved below every peg, whether or not it carries a word
+private val PITCH_BOTTOM_MARGIN = 3.dp
 
 /**
  * The punched paper roll: a manila strip winding past a fixed reading head. Every note is
@@ -79,6 +83,15 @@ fun PaperRoll(
     val pxPerTick = sixteenthPx / TICKS_PER_DOT
     val seamPx = with(density) { SEAM_WIDTH.toPx() }
     val pegPx = with(density) { PEG_WIDTH.toPx() }
+    val pegHeightPx = with(density) { PEG_HEIGHT.toPx() }
+    val sheetHeightPx = with(density) { (ROLL_HEIGHT * 0.82f).toPx() }
+    // How far a peg's top edge may travel between the lowest and highest pitch — bounded so
+    // every note stays inside the sheet's own height (see the redesign bug where a wider
+    // fixed step pushed low notes' pegs below the paper and onto the keys underneath).
+    val pitchTravelPx = with(density) {
+        (sheetHeightPx - PITCH_TOP_MARGIN.toPx() - PITCH_BOTTOM_MARGIN.toPx() - WORD_GAP.toPx() - WORD_ROW_HEIGHT.toPx() - pegHeightPx)
+            .coerceAtLeast(0f)
+    }
 
     val startPx = remember(tape, pxPerTick, seamPx) { tickOffsets(tape, pxPerTick, seamPx) }
     val barLineXs = remember(tape, meter, startPx, pxPerTick) { barLineOffsets(tape, meter, startPx, pxPerTick) }
@@ -127,10 +140,13 @@ fun PaperRoll(
                     }
                     tape.forEachIndexed { idx, ev ->
                         if (!ev.rest && ev.noteIndex != null) {
+                            // 0 = lowest pitch (travels furthest down), NOTES.lastIndex = highest (stays at the top).
+                            val pitchT = (NOTES.lastIndex - ev.noteIndex).toFloat() / NOTES.lastIndex
+                            val yPx = with(density) { PITCH_TOP_MARGIN.toPx() } + pitchT * pitchTravelPx
                             Box(
                                 modifier = Modifier
-                                    .offset { androidx.compose.ui.unit.IntOffset((startPx[idx] + trackOffsetPx).toInt(), 0) }
-                                    .align(Alignment.CenterStart),
+                                    .offset { androidx.compose.ui.unit.IntOffset((startPx[idx] + trackOffsetPx).toInt(), yPx.toInt()) }
+                                    .align(Alignment.TopStart),
                             ) {
                                 PegCell(
                                     note = NOTES[ev.noteIndex],
@@ -217,21 +233,27 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSprockets(offse
 
 @Composable
 private fun PegCell(note: NoteSpec, noteIndex: Int, material: SoundMaterial, lit: Boolean, word: String) {
-    Column(modifier = Modifier.width(CELL_WIDTH), horizontalAlignment = Alignment.CenterHorizontally) {
-        androidx.compose.material3.Text(
-            text = "${noteIndex + 1}",
-            fontSize = 9.sp,
-            fontWeight = FontWeight.Bold,
-            color = if (lit) NowRed else Color(0xFFA89478),
-        )
+    Column(
+        modifier = Modifier.width(CELL_WIDTH),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(WORD_GAP),
+    ) {
         Box(
             modifier = Modifier
-                .offset(y = ((7 - noteIndex) * PITCH_STEP_DP).dp)
                 .width(PEG_WIDTH)
                 .height(PEG_HEIGHT)
-                .clip(RoundedCornerShape(6.dp))
+                .clip(RoundedCornerShape(7.dp))
                 .background(note.colorFor(material)),
-        )
+            contentAlignment = Alignment.Center,
+        ) {
+            androidx.compose.material3.Text(
+                text = "${noteIndex + 1}",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                // Dark ink verified at 4.5:1+ against every bar colour (see Constants.kt's NOTES).
+                color = if (lit) NowRed else Color(0xFF2E2A22),
+            )
+        }
         if (word.isNotEmpty()) {
             androidx.compose.material3.Text(
                 text = word,

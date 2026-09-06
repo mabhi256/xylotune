@@ -34,16 +34,21 @@ class PadLine(notes: List<NoteEvent> = emptyList(), lyric: String = "") {
  * Ported from index.html's pad mutation functions (newLine/backspace/forwardDelete/
  * hardDelete/addDot/moveCursor, lines ~1144-1254), adapted to the paper-roll redesign's
  * tick-based durations (see data/Constants.kt's ticksOf/TICKS_PER_DOT). [onBeforeEdit]
- * fires at the top of every mutating function — mirrors the web's `finishPlayback()` call
- * in each of these. It's a settable var, not a constructor param, because the Playback
- * instance it usually points at is itself constructed from this PadState (a real cycle,
- * not just ordering) — the caller wires it up right after building both:
- * `val playback = Playback(pad, ...).also { pad.onBeforeEdit = { it.finish() } }`.
+ * fires at the top of every *external* edit — mirrors the web's `finishPlayback()` call in
+ * each of these — so an unrelated action (typing a lyric, moving the cursor, starting a
+ * fresh song) cuts short any live take or playback in progress. It's a settable var, not a
+ * constructor param, because the Playback instance it usually points at is itself
+ * constructed from this PadState (a real cycle, not just ordering) — the caller wires it up
+ * right after building both: `val playback = Playback(pad, ...).also { pad.onBeforeEdit = { it.finish() } }`.
  *
  * A new note is never added by any function below — only by [appendLiveNote], the single
- * entry point [com.xylotune.app.player.LiveCapture] uses to punch a struck bar into the
- * pad while the paper roll winds. Everything here edits, retimes, or removes what's
- * already there.
+ * entry point [com.xylotune.app.player.LiveCapture] uses to punch a struck bar into the pad
+ * while the paper roll winds. It's also the one mutator that must *not* call
+ * [onBeforeEdit]: that callback stops live capture, and every punch during a take calls
+ * appendLiveNote, so wiring it in there made every take cancel itself one strike after
+ * starting (the paper never appeared to wind between strikes — see the redesign's roll-
+ * freezes-mid-take bug). Everything else here edits, retimes, or removes what's already
+ * there, on behalf of something other than the capture session itself.
  */
 class PadState {
     var onBeforeEdit: () -> Unit = {}
@@ -105,9 +110,12 @@ class PadState {
      * — [adjustLastNoteTicks] fixes up whatever note was *previously* last once the next
      * strike (or the take's closing silence) reveals how long it actually rang. Always
      * appends at the end, never at the cursor: live capture only ever writes forward.
+     *
+     * Deliberately skips [onBeforeEdit]: this call *is* the live-capture session writing to
+     * itself, not an outside edit interrupting one — see the class doc for why calling it
+     * here would stop the very take it's part of.
      */
     fun appendLiveNote(noteIndex: Int, ticks: Int) {
-        onBeforeEdit()
         val lineIdx = lines.lastIndex
         val line = lines[lineIdx]
         line.notes.add(NoteEvent(i = noteIndex, ticks = ticks, sec = ticksToSec(ticks, bpm)))

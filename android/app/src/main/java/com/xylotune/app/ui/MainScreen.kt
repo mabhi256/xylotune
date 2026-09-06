@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -158,7 +159,11 @@ fun MainScreen() {
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        // MainActivity opts out of the system's own IME resize (decorFitsSystemWindows(false),
+        // for the immersive full-bleed board), so without this the keyboard just overlaps
+        // the sheet's lyric field — and the cursor toolbar below it — instead of the layout
+        // shrinking to keep both in view.
+        Column(modifier = Modifier.fillMaxSize().imePadding()) {
             AppToolbar(
                 songTitle = currentSongName,
                 view = view,
@@ -287,6 +292,7 @@ fun MainScreen() {
                 speedPercent = playback.speedPercent,
                 speedEnabled = mode != AppMode.Practice,
                 canDelete = currentSongName != null,
+                canClear = pad.hasAnyNotes(),
                 onBpmChange = { pad.changeBpm(it) },
                 onMeterCycle = {
                     val options = listOf(listOf(4, 4), listOf(3, 4), listOf(6, 8))
@@ -296,6 +302,7 @@ fun MainScreen() {
                 onSpeedChange = { playback.speedPercent = it },
                 onSave = { scope.launch { saveSong(pad, dialogHost, driveSync, currentSongName, savedSongs, { savedSongs = it }, { currentSongName = it }, context) } },
                 onDelete = { scope.launch { deleteSong(pad, ::newSong, dialogHost, driveSync, currentSongName, savedSongs, { savedSongs = it }, { currentSongName = it }, context) } },
+                onClear = { scope.launch { if (dialogHost.askConfirm("Clear the sheet? This can't be undone.", confirmLabel = "Clear", danger = true)) newSong() } },
                 driveStatus = driveSync.status,
                 onDriveClick = { scope.launch { onDriveButtonClick(driveSync, dialogHost) { updated -> savedSongs = updated } } },
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = 56.dp, end = 10.dp),

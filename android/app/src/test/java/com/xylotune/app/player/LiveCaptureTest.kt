@@ -80,4 +80,23 @@ class LiveCaptureTest {
         capture.stop() // never started
         assertEquals(0, pad.lines[0].notes.size)
     }
+
+    @Test
+    fun `a take survives its own punches when onBeforeEdit is wired to stop it, like MainScreen wires it`() {
+        val pad = PadState()
+        val nanos = longArrayOf(0)
+        val capture = captureAt(pad, nanos)
+        // Mirrors MainScreen's real wiring: pad.onBeforeEdit stops whatever live take is in
+        // progress, because every *external* edit should cut one short. appendLiveNote used
+        // to call onBeforeEdit too, which — since appendLiveNote is the take's own writes,
+        // not an external edit — made every punch stop the very take it belonged to, and
+        // the roll never appeared to wind between strikes.
+        pad.onBeforeEdit = { capture.stop() }
+        capture.punch(0)
+        assertEquals(true, capture.recording)
+        nanos[0] = (0.10 * 1_000_000_000L).toLong()
+        capture.punch(1)
+        assertEquals(true, capture.recording)
+        assertEquals(2, pad.lines[0].notes.size)
+    }
 }
