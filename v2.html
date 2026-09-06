@@ -1,0 +1,1325 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Xylotune</title>
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shantell+Sans:ital,wght@0,300..800;1,300..800&family=Karla:wght@400;600;700&display=swap">
+<style>
+/* ================================================================
+   Xylotune v2 - the "paper roll" redesign.
+   A punched music-box strip in a crayon world, replacing the dark
+   staff-and-red-box layout of index.html. This file is a SEPARATE,
+   self-contained app (not a patch to index.html): it shares the
+   same localStorage schema (xyloSongs / xyloTombstones / xyloSound)
+   so songs saved here or in index.html are both visible either way,
+   and it reuses index.html's real modal-synthesis audio engine
+   verbatim. Deliberately out of scope: Google Drive sync and the
+   ML audio-to-notes transcription feature - neither is part of the
+   visual/interaction redesign this file implements.
+   ================================================================ */
+:root{
+  color-scheme: light;
+  --app-bg:#FFFDF7;
+  --app-ink:#33302B;
+  --app-ink-2:#776F62;
+  --app-ink-3:#A89E8D;
+  --app-rule:#E6DDC9;
+  --app-paper:#F3E7CB;
+  --app-paper-2:#E7D8B4;
+  --app-now:#E2553D;
+  --app-tie:#1F8A7C;
+}
+*{box-sizing:border-box}
+html,body{
+  margin:0; height:100%; overflow:hidden; background:var(--app-bg); color:var(--app-ink);
+  font-family:"Shantell Sans","Karla",-apple-system,sans-serif;
+  -webkit-user-select:none; user-select:none; touch-action:manipulation;
+}
+:focus-visible{outline:2.5px solid var(--app-now); outline-offset:2px; border-radius:4px}
+
+#screen{
+  position:relative; overflow:hidden; height:100%; width:100%;
+  display:flex; flex-direction:column;
+}
+/* faint paper tooth */
+#screen::before{
+  content:""; position:absolute; inset:0; pointer-events:none; z-index:0; opacity:.5;
+  background-image:radial-gradient(circle at 1px 1px, rgba(120,98,60,.13) .6px, transparent .7px);
+  background-size:7px 7px;
+}
+#screen > *{position:relative; z-index:1}
+
+/* --- toolbar --- */
+.tb{
+  flex:0 0 auto; height:52px; display:flex; align-items:center; gap:10px; padding:0 14px;
+}
+.tb .spacer{flex:1}
+.tbtn{
+  appearance:none; border:0; background:transparent; cursor:pointer; color:var(--app-ink);
+  padding:0; border-radius:11px; width:38px; height:38px; min-width:34px; min-height:34px;
+  display:grid; place-items:center; position:relative;
+  transition:background .13s ease, transform .08s ease;
+}
+.tbtn svg{width:76%; height:76%; display:block}
+.tbtn:hover{background:rgba(226,85,61,.11)}
+.tbtn:active{transform:scale(.9) rotate(-3deg)}
+.tbtn[disabled]{opacity:.28; cursor:default}
+.tbtn[disabled]:hover{background:transparent}
+.tbtn.is-on{background:rgba(226,85,61,.16)}
+.tbtn .dot{
+  position:absolute; right:5px; bottom:5px; width:7px; height:7px;
+  border-radius:50%; background:var(--app-now); border:1.5px solid var(--app-bg);
+}
+.tb-title{
+  font-weight:700; color:var(--app-ink); font-size:19px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:42vw;
+  text-align:center; padding-bottom:3px; position:relative; background:none; border:0;
+  font-family:inherit; cursor:default;
+}
+.tb-title::after{
+  content:""; position:absolute; left:4%; right:4%; bottom:0; height:2.4px;
+  background:var(--app-now); border-radius:2px; filter:url(#roughFine); opacity:.85;
+}
+.tb-title.untitled{color:var(--app-ink-3); font-weight:400; font-style:italic}
+.tb-title.untitled::after{display:none}
+
+/* --- popovers --- */
+.menu,.sheet{
+  position:absolute; z-index:20; background:var(--app-bg); border:2.5px solid var(--app-ink);
+  border-radius:14px; box-shadow:4px 5px 0 rgba(51,48,43,.14); padding:8px;
+  max-height:80vh; overflow-y:auto;
+}
+.menu{top:56px; left:12px; min-width:230px}
+.sheet{right:12px; top:56px; min-width:280px; display:flex; flex-direction:column; gap:9px; padding:14px}
+.menu[hidden],.sheet[hidden]{display:none}
+.menu button,.sheet .item{
+  display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%;
+  text-align:left; appearance:none; border:0; background:transparent; cursor:pointer;
+  font:inherit; font-size:15px; font-weight:600; color:var(--app-ink);
+  padding:9px 12px; border-radius:9px; white-space:nowrap;
+}
+.menu button:hover,.sheet .item:hover{background:rgba(226,85,61,.13)}
+.menu button.current{color:var(--app-now)}
+.sheet .item[disabled]{color:var(--app-ink-3); cursor:default}
+.sheet .item[disabled]:hover{background:transparent}
+.menu .sep,.sheet .div{height:2px; background:var(--app-rule); margin:4px 6px; border-radius:2px}
+.menu .hint{font-size:13px; color:var(--app-ink-3); padding:4px 12px 8px; font-style:italic; max-width:260px; white-space:normal}
+.sheet .row{display:flex; align-items:center; justify-content:space-between; gap:14px; font-size:15px; font-weight:600; color:var(--app-ink-2); padding:0 4px}
+.sheet .val{color:var(--app-ink); font-variant-numeric:tabular-nums}
+.sheet input[type=range]{width:100%; accent-color:var(--app-now)}
+.sheet .item.step{flex:0 0 auto; width:38px; justify-content:center; border:2px solid var(--app-rule); border-radius:9px}
+.sheet .item.tap{flex:1 1 auto; justify-content:center; border:2px solid var(--app-ink); border-radius:9px; box-shadow:2px 2px 0 rgba(51,48,43,.15)}
+.sheet .item.tap:active{transform:translate(2px,2px); box-shadow:none}
+
+/* --- the punched roll --- */
+.rollwrap{flex:0 0 auto; position:relative; height:clamp(90px, 26vh, 170px); display:flex; align-items:center; overflow:hidden}
+.band{
+  position:absolute; left:0; right:0; top:50%; translate:0 -50%; height:80%;
+  background:var(--app-paper); border-top:2px solid var(--app-paper-2); border-bottom:2px solid var(--app-paper-2);
+  box-shadow:inset 0 3px 7px -4px rgba(90,68,30,.5), inset 0 -3px 7px -4px rgba(90,68,30,.5);
+}
+.band::before,.band::after{
+  content:""; position:absolute; left:0; right:0; height:11px; pointer-events:none;
+  background-image:radial-gradient(circle at 50% 50%, var(--app-bg) 0 3.4px, rgba(140,112,58,.34) 3.4px 4.3px, transparent 4.5px);
+  background-size:22px 100%; background-position:var(--roll-x,0) 0;
+}
+.band::before{top:5px}
+.band::after{bottom:5px}
+.track{
+  position:relative; display:flex; align-items:stretch; height:80%; padding:0 50%; will-change:transform;
+}
+.track.snap{transition:transform .26s cubic-bezier(.33,1,.68,1)}
+/* align-items:flex-start (not center): the peg marks the instant of the punch, so it
+   must sit at the cell's start edge, not float in the middle of a duration-wide cell -
+   the paper to its right, not on both sides, is what reads as "how long it rings". */
+.cell{flex:0 0 auto; display:flex; flex-direction:column; align-items:flex-start; padding:0 3px; position:relative; z-index:1}
+.num{font-size:9px; font-weight:700; color:var(--app-ink-3); line-height:1; margin-bottom:2px}
+.num.lit{color:var(--app-now)}
+.peg{
+  border-radius:6px; height:15px; width:20px; flex:0 0 auto; position:relative;
+  border:2px solid rgba(58,42,14,.42);
+  box-shadow:inset 0 2px 0 rgba(46,32,8,.26), inset 0 -1px 0 rgba(255,255,255,.34);
+  transition:transform .18s cubic-bezier(.2,.9,.3,1), filter .18s;
+}
+.peg::after{
+  content:""; position:absolute; inset:0; border-radius:4px;
+  background:repeating-linear-gradient(58deg, rgba(255,255,255,.30) 0 1.4px, transparent 1.4px 4.2px);
+  mix-blend-mode:soft-light;
+}
+.peg.lit{transform:scale(1.16); filter:brightness(1.16) saturate(1.18)}
+.peg.wrong{animation:shake .3s}
+@keyframes shake{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+.word{
+  margin-top:auto; padding-top:6px; text-align:center; width:20px;
+  font-size:13px; font-weight:700; color:#4E3C1B; line-height:1;
+  overflow:visible; white-space:nowrap;
+}
+.word.lit{color:var(--app-now)}
+.lyricrule{position:absolute; left:0; right:0; bottom:26px; height:1px; background:rgba(140,112,58,.42); pointer-events:none; z-index:0}
+.seam{flex:0 0 auto; width:6px; align-self:center; height:64%; background:repeating-linear-gradient(180deg, rgba(120,94,44,.45) 0 3px, transparent 3px 6px)}
+.bar4{position:absolute; top:14%; bottom:14%; width:2px; z-index:0; background:rgba(120,94,44,.38); pointer-events:none}
+.reader{position:absolute; left:50%; top:50%; translate:-50% -50%; width:26px; height:88%; pointer-events:none; z-index:2}
+.reader i{position:absolute; top:0; bottom:0; width:2.6px; background:var(--app-now); border-radius:2px; filter:url(#roughFine)}
+.reader i:first-child{left:0}
+.reader i:last-child{right:0}
+.reader b{position:absolute; left:50%; translate:-50% 0; width:0; height:0; border-left:7px solid transparent; border-right:7px solid transparent}
+.reader b.up{top:-3px; border-top:9px solid var(--app-now)}
+.reader b.dn{bottom:-3px; border-bottom:9px solid var(--app-now)}
+.roll-empty{position:absolute; inset:0; display:grid; place-items:center; z-index:3; color:#8A7448; font-size:16px; font-style:italic; pointer-events:none; text-align:center; padding:0 20px}
+
+/* --- keys --- */
+.board{flex:1 1 auto; position:relative; display:flex; gap:8px; padding:10px 12px 14px; min-height:0}
+.key{flex:1 1 0; position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; transition:transform .17s cubic-bezier(.2,.9,.3,1)}
+.key .skin{position:absolute; inset:0; border-radius:15px; border:3px solid; filter:url(#rough)}
+.key .skin::after{
+  content:""; position:absolute; inset:0; border-radius:12px;
+  background:repeating-linear-gradient(64deg, rgba(255,255,255,.34) 0 2px, transparent 2px 6px),
+             repeating-linear-gradient(-52deg, rgba(0,0,0,.06) 0 1.5px, transparent 1.5px 7px);
+  mix-blend-mode:soft-light;
+}
+.key .letter{position:relative; z-index:2; font-weight:700; font-size:clamp(22px,5.4vh,40px); color:#2E2A22; pointer-events:none}
+.key .idx{position:relative; z-index:2; font-weight:700; font-size:clamp(11px,2vh,15px); color:rgba(46,42,34,.62); pointer-events:none; margin-top:2px}
+.key.hit{transform:scale(.94) rotate(-1deg)}
+.key.hit .skin{filter:url(#rough) brightness(1.24)}
+.key.target .skin{animation:tgt .64s ease-in-out infinite alternate}
+.key.target::after{content:""; position:absolute; inset:-5px; border-radius:19px; border:3.5px dashed var(--app-now); filter:url(#roughFine)}
+@keyframes tgt{from{filter:url(#rough) brightness(1)}to{filter:url(#rough) brightness(1.2)}}
+.sparks{position:absolute; inset:0; pointer-events:none; z-index:4}
+@media (prefers-reduced-motion: reduce){.key.target .skin{animation:none}}
+
+/* --- the sheet: the roll, wrapped --- */
+.sheetwrap{flex:1 1 auto; overflow-y:auto; padding:14px 16px; min-height:0}
+.sline{margin-bottom:18px}
+.sbars{display:flex; flex-wrap:wrap; align-items:flex-start; gap:10px 0}
+.sbar{display:flex; align-items:stretch; height:74px; position:relative; background:var(--app-paper); border-top:2px solid var(--app-paper-2); border-bottom:2px solid var(--app-paper-2); padding:0 2px}
+.sbar::before,.sbar::after{
+  content:""; position:absolute; left:0; right:0; height:9px; pointer-events:none;
+  background-image:radial-gradient(circle at 50% 50%, var(--app-bg) 0 2.6px, rgba(140,112,58,.34) 2.6px 3.3px, transparent 3.4px);
+  background-size:22px 100%;
+}
+.sbar::before{top:4px}
+.sbar::after{bottom:4px}
+.sbar + .sbar{border-left:2px solid rgba(120,94,44,.42)}
+.sbar:first-child{border-left:2px solid rgba(120,94,44,.42)}
+.sbar:last-child{border-right:2px solid rgba(120,94,44,.42)}
+.cell.sm .num{font-size:8px; margin-bottom:1px}
+.cell.sm .peg{height:14px; width:18px}
+.cell.sm .word{padding-top:5px; font-size:12px; width:18px}
+.scaret{align-self:center; width:3px; height:46px; background:var(--app-now); border-radius:2px; margin:0 4px; animation:blink 1.05s steps(2) infinite}
+@keyframes blink{50%{opacity:.15}}
+.slyric{
+  margin-top:8px; font-size:16px; color:var(--app-ink); border:2px solid var(--app-rule);
+  border-radius:8px; padding:7px 12px; background:var(--app-bg); outline:none; width:100%; font-family:inherit;
+}
+.slyric:focus{border-color:var(--app-now)}
+.sempty{color:var(--app-ink-3); font-style:italic; font-size:16px; padding:24px 0; text-align:center}
+.etools{flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:10px 16px; border-top:2px solid var(--app-rule); overflow-x:auto}
+.etools button{
+  appearance:none; font:inherit; font-weight:700; font-size:15px; cursor:pointer; flex:0 0 auto;
+  background:var(--app-bg); border:2.5px solid var(--app-ink); color:var(--app-ink);
+  border-radius:9px; padding:6px 13px; box-shadow:2px 2px 0 rgba(51,48,43,.16);
+}
+.etools button:hover{border-color:var(--app-now); color:var(--app-now)}
+.etools button:active{transform:translate(2px,2px); box-shadow:none}
+.etools button[disabled]{opacity:.35; cursor:default}
+.etools button[disabled]:active{transform:none; box-shadow:2px 2px 0 rgba(51,48,43,.16)}
+.etools .lbl{font-size:13px; color:var(--app-ink-3); font-weight:700; margin-right:2px}
+
+/* --- link view --- */
+.linkhead{flex:0 0 auto; display:flex; align-items:center; justify-content:center; gap:16px; padding:9px 0; font-size:16px; color:var(--app-ink-2); font-weight:700}
+.linkhead button{
+  appearance:none; border:2.5px solid var(--app-ink); background:var(--app-bg); cursor:pointer;
+  color:var(--app-ink); border-radius:8px; width:30px; height:30px; display:grid; place-items:center; font-size:15px; font-weight:700;
+}
+.linkhead button[disabled]{opacity:.3; cursor:default}
+.linkrow{flex:0 0 auto; display:flex; align-items:center; justify-content:center; gap:8px; padding:6px 16px; flex-wrap:wrap}
+.words{flex:0 0 auto; display:flex; align-items:center; justify-content:center; gap:10px; padding:8px 16px 12px; flex-wrap:wrap; overflow-y:auto}
+.wd-tok{font-size:18px; font-weight:400; font-style:italic; color:var(--app-ink-3); cursor:pointer; padding:3px 6px; border-radius:6px}
+.wd-tok:hover{background:rgba(31,138,124,.14)}
+.wd-tok.tied{color:var(--app-ink); font-style:normal; font-weight:700; box-shadow:inset 0 -4px 0 var(--app-tie)}
+.linkhint{flex:0 0 auto; text-align:center; font-size:13px; color:var(--app-ink-3); font-style:italic; padding-bottom:4px}
+.peg.armed{box-shadow:0 0 0 2px var(--app-bg), 0 0 0 4.5px var(--app-tie)}
+
+</style>
+</head>
+
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <filter id="rough" x="-8%" y="-8%" width="116%" height="116%">
+    <feTurbulence type="fractalNoise" baseFrequency="0.021" numOctaves="3" seed="4" result="n"/>
+    <feDisplacementMap in="SourceGraphic" in2="n" scale="4.2" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+  <filter id="roughFine" x="-14%" y="-14%" width="128%" height="128%">
+    <feTurbulence type="fractalNoise" baseFrequency="0.062" numOctaves="2" seed="11" result="n"/>
+    <feDisplacementMap in="SourceGraphic" in2="n" scale="1.5" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+</svg>
+
+<div id="screen">
+  <div class="tb">
+    <button class="tbtn" id="btn-settings" title="Settings" aria-label="Settings"></button>
+    <button class="tbtn" id="btn-music" title="Music" aria-label="Music"></button>
+    <button class="tbtn" id="btn-lyrics" title="View" aria-label="View"></button>
+    <span class="spacer"></span>
+    <span class="tb-title untitled" id="tb-title">Untitled</span>
+    <span class="spacer"></span>
+    <button class="tbtn" id="btn-reset" title="Wind back to the start" aria-label="Wind back to the start"></button>
+    <button class="tbtn" id="btn-play" title="Play" aria-label="Play"></button>
+    <button class="tbtn" id="btn-material" title="Bar material" aria-label="Bar material"></button>
+  </div>
+
+  <div class="menu" id="menu" hidden></div>
+
+  <div class="sheet" id="sheet" hidden>
+    <div class="row"><span>Tempo</span><span class="val"><span id="bpm-val">100</span> BPM</span></div>
+    <div class="row" style="gap:8px; padding:0">
+      <button class="item step" id="bpm-down" aria-label="Slower">&minus;</button>
+      <button class="item tap" id="bpm-tap">Tap tempo</button>
+      <button class="item step" id="bpm-up" aria-label="Faster">+</button>
+    </div>
+    <div class="row"><span>Meter</span><button class="item" id="meter-cycle" style="width:auto; font-weight:700; justify-content:center; padding:4px 14px"><span id="meter-val">4/4</span></button></div>
+    <div class="row"><span style="font-weight:400; font-style:italic">one sixteenth</span><span class="val" id="dot-val">0.150 s</span></div>
+    <div class="div"></div>
+    <div class="row"><span>Speed</span><span class="val" id="spd-val">100%</span></div>
+    <input type="range" id="spd" min="50" max="200" step="10" value="100" aria-label="Playback speed">
+    <div class="div"></div>
+    <button class="item" id="act-save">Save song</button>
+    <button class="item" id="act-delete" disabled>Delete song</button>
+  </div>
+
+  <div id="view-roll" style="display:flex; flex-direction:column; flex:1 1 auto; min-height:0">
+    <div class="rollwrap">
+      <div class="band"></div>
+      <div class="lyricrule"></div>
+      <div class="track" id="track"></div>
+      <div class="reader"><i></i><b class="up"></b><b class="dn"></b><i></i></div>
+      <div class="roll-empty" id="roll-empty">Tap the bars to punch your tune&hellip;</div>
+    </div>
+    <div class="board" id="board"></div>
+    <canvas class="sparks" id="sparks"></canvas>
+  </div>
+
+  <div id="view-editor" style="display:none; flex-direction:column; flex:1 1 auto; min-height:0">
+    <div class="sheetwrap" id="editor"></div>
+    <div class="etools">
+      <span class="lbl">Cursor</span>
+      <button id="cur-left">&#9664;</button>
+      <button id="cur-right">&#9654;</button>
+      <button id="cur-back">&#9003;</button>
+      <button id="cur-fwd">&#9003;&#8594;</button>
+      <button id="cur-hold">+ hold</button>
+      <button id="cur-newline">&#8626; line</button>
+    </div>
+  </div>
+
+  <div id="view-link" style="display:none; flex-direction:column; flex:1 1 auto; min-height:0">
+    <div class="linkhead">
+      <button id="ln-prev" aria-label="Previous line">&#9664;</button>
+      <span id="ln-label">Line 1 of 1</span>
+      <button id="ln-next" aria-label="Next line">&#9654;</button>
+    </div>
+    <div class="linkrow" id="linkrow"></div>
+    <div class="words" id="words"></div>
+    <p class="linkhint" id="linkhint">Tap a note, then tap the word it sings.</p>
+    <div class="board" id="board2"></div>
+  </div>
+
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   Constants shared 1:1 with index.html's own values, so a song
+   saved by either app plays back with identical real-second
+   timing in the other.
+   ============================================================ */
+var QUARTER_SEC = 0.4;                    // legacy quarter note, at the app's old fixed 150bpm
+var REST_UNIT_SEC = QUARTER_SEC / 4;      // 0.1s: one legacy "dot"
+var PPQ = 24;                              // ticks per quarter note (new in v2)
+var TICKS_PER_DOT = PPQ / 4;               // 6: a legacy "dot" in the new tick grid
+
+var METAL = [
+  { n:"C", freq:523.25, fill:"#DE5D54", edge:"#CC2A1E" },
+  { n:"D", freq:587.33, fill:"#EA943E", edge:"#D17010" },
+  { n:"E", freq:659.26, fill:"#E6B933", edge:"#C09411" },
+  { n:"F", freq:698.46, fill:"#51B856", edge:"#328F37" },
+  { n:"G", freq:783.99, fill:"#37AEA2", edge:"#217D74" },
+  { n:"A", freq:880.00, fill:"#2FA7DA", edge:"#177EAB" },
+  { n:"B", freq:987.77, fill:"#9671D0", edge:"#6D37C3" },
+  { n:"C", freq:1046.50,fill:"#DC706A", edge:"#D63129" }
+];
+var WOOD = METAL.map(function(b, i){
+  var t = i / 7, h = 32 - 10 * t, s = 42 + 5 * t, l = 60 - 16 * t;
+  return { n:b.n, freq:b.freq,
+    fill:"hsl(" + h.toFixed(0) + " " + s.toFixed(0) + "% " + l.toFixed(0) + "%)",
+    edge:"hsl(" + h.toFixed(0) + " " + (s+6).toFixed(0) + "% " + (l-14).toFixed(0) + "%)" };
+});
+function bars(){ return material === "metal" ? METAL : WOOD; }
+
+function clamp(v, lo, hi){ return Math.min(hi, Math.max(lo, v)); }
+
+/* ============================================================
+   Storage - the exact keys and shapes index.html reads and
+   writes, so songs are shared between the two apps. A song is
+   persisted as {lines, updatedAt, bpm, meter}; each note as
+   {i, rest, sec, ticks, lyricStart, lyricEnd, lyricSpan}. `sec`
+   is always written (old readers use only that); `ticks` is
+   written alongside it and is what this app treats as the
+   source of truth once present.
+   ============================================================ */
+function loadJSON(key, fallback){
+  try { var raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }
+  catch (e) { return fallback; }
+}
+function saveJSON(key, value){
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* storage full, ignore */ }
+}
+function loadSoundPref(){ try { return localStorage.getItem("xyloSound") === "wood" ? "wood" : "metal"; } catch (e) { return "metal"; } }
+function saveSoundPref(v){ try { localStorage.setItem("xyloSound", v); } catch (e) {} }
+
+// ticks -> real seconds, at a given song tempo. One dot (legacy 0.1s) is 6 ticks,
+// so a song saved with bpm 150 round-trips to exactly the values index.html already wrote.
+function secPerTick(bpm){ return 60 / (bpm * PPQ); }
+function ticksToSec(ticks, bpm){ return ticks * secPerTick(bpm); }
+function secToTicks(sec){ return Math.max(TICKS_PER_DOT, Math.round(sec / REST_UNIT_SEC) * TICKS_PER_DOT); }
+function barTicks(meter){ return Math.round(meter[0] * (4 / meter[1]) * PPQ); }
+
+// A note as loaded into memory always carries `ticks`; `sec` is derived only when writing.
+function noteFromWire(n){
+  return {
+    i: (typeof n.i === "number") ? n.i : null,
+    rest: !!n.rest,
+    ticks: (typeof n.ticks === "number" && n.ticks > 0) ? n.ticks : secToTicks(n.sec || REST_UNIT_SEC),
+    lyricStart: (typeof n.lyricStart === "number") ? n.lyricStart : null,
+    lyricEnd: (typeof n.lyricEnd === "number") ? n.lyricEnd : null,
+    lyricSpan: (typeof n.lyricSpan === "number") ? n.lyricSpan : null,
+  };
+}
+function noteToWire(n, bpm){
+  var w = { sec: ticksToSec(n.ticks, bpm), ticks: n.ticks };
+  if (n.rest) w.rest = true; else w.i = n.i;
+  if (typeof n.lyricStart === "number"){ w.lyricStart = n.lyricStart; w.lyricEnd = n.lyricEnd; w.lyricSpan = n.lyricSpan; }
+  return w;
+}
+function songFromWire(raw){
+  return {
+    lines: (raw.lines || []).map(function(l){ return { lyric: l.lyric || "", notes: (l.notes || []).map(noteFromWire) }; }),
+    bpm: (typeof raw.bpm === "number") ? raw.bpm : 150,     // legacy songs: 150bpm reproduces their fixed 0.1s grid exactly
+    meter: Array.isArray(raw.meter) && raw.meter.length === 2 ? raw.meter.slice() : [4, 4],
+  };
+}
+function songToWire(song){
+  return {
+    lines: song.lines.map(function(l){ return { lyric: l.lyric, notes: l.notes.map(function(n){ return noteToWire(n, song.bpm); }) }; }),
+    updatedAt: Date.now(),
+    bpm: song.bpm,
+    meter: song.meter,
+  };
+}
+function loadSavedSongs(){ return loadJSON("xyloSongs", {}); }
+function saveSavedSongs(v){ saveJSON("xyloSongs", v); }
+function loadTombstones(){ return loadJSON("xyloTombstones", {}); }
+function saveTombstones(v){ saveJSON("xyloTombstones", v); }
+
+/* ============================================================
+   Lyric linking - ported verbatim from index.html's own pure
+   functions (collectLineTags / stripLyricTags / invalidateTagsAt /
+   clearTagOverlap / linkLyricSelection), unchanged in behaviour.
+   ============================================================ */
+function collectLineTags(line){
+  return line.notes
+    .map(function(n, ni){ return { n:n, ni:ni }; })
+    .filter(function(x){ return x.n.lyricStart != null; })
+    .map(function(x){ return { start:x.n.lyricStart, end:x.n.lyricEnd, noteIdx:x.ni, noteSpan:x.n.lyricSpan || 1 }; })
+    .sort(function(a, b){ return a.start - b.start; });
+}
+function stripLyricTags(notesArr){
+  notesArr.forEach(function(n){ n.lyricStart = null; n.lyricEnd = null; n.lyricSpan = null; });
+}
+function invalidateTagsAt(line, pos){
+  var toStrip = collectLineTags(line).filter(function(t){ return pos > t.noteIdx && pos <= t.noteIdx + t.noteSpan - 1; });
+  stripLyricTags(toStrip.map(function(t){ return line.notes[t.noteIdx]; }));
+}
+function clearTagOverlap(line, noteStart, noteEnd, charStart, charEnd){
+  var toStrip = collectLineTags(line).filter(function(t){
+    var noteOverlap = t.noteIdx <= noteEnd && t.noteIdx + t.noteSpan - 1 >= noteStart;
+    var charOverlap = t.start < charEnd && t.end > charStart;
+    return noteOverlap || charOverlap;
+  });
+  stripLyricTags(toStrip.map(function(t){ return line.notes[t.noteIdx]; }));
+}
+function linkLyricSelection(line, noteStart, noteEnd, charStart, charEnd){
+  clearTagOverlap(line, noteStart, noteEnd, charStart, charEnd);
+  var n = line.notes[noteStart];
+  n.lyricStart = charStart; n.lyricEnd = charEnd; n.lyricSpan = noteEnd - noteStart + 1;
+}
+
+/* ============================================================
+   Audio - index.html's modal-synthesis engine, reused verbatim
+   (struck-bar modes + a short bandpassed noise transient), so
+   v2 sounds identical to the production web app, not a toy.
+   ============================================================ */
+var audioCtx = null, bus = null, noiseBuffer = null;
+function ctx(){
+  if (!audioCtx){
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    var comp = audioCtx.createDynamicsCompressor();
+    comp.threshold.value = -18; comp.ratio.value = 6; comp.connect(audioCtx.destination);
+    bus = audioCtx.createGain(); bus.gain.value = 0.85; bus.connect(comp);
+  }
+  return audioCtx;
+}
+function getNoiseBuffer(ac){
+  if (noiseBuffer) return noiseBuffer;
+  var len = ac.sampleRate * 0.03;
+  noiseBuffer = ac.createBuffer(1, len, ac.sampleRate);
+  var data = noiseBuffer.getChannelData(0);
+  for (var i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+  return noiseBuffer;
+}
+var SOUND_PROFILES = {
+  metal: {
+    modes: [ {ratio:1.000,gain:0.55,decay:1.5}, {ratio:1.004,gain:0.28,decay:1.3}, {ratio:2.756,gain:0.20,decay:0.60}, {ratio:5.404,gain:0.11,decay:0.30}, {ratio:8.933,gain:0.05,decay:0.16} ],
+    noise: { freqMul:2.5, gain:0.22, decay:0.012 }, lowpass:null,
+  },
+  wood: {
+    modes: [ {ratio:1.000,gain:0.70,decay:0.35}, {ratio:3.932,gain:0.16,decay:0.20}, {ratio:9.538,gain:0.05,decay:0.09} ],
+    noise: { freqMul:1.1, gain:0.40, decay:0.02 }, lowpass:3400,
+  },
+};
+function playNote(i, soundType, when){
+  when = when || 0;
+  var ac;
+  try { ac = ctx(); } catch (e) { return; }
+  var t0 = ac.currentTime + when;
+  var freq = bars()[i].freq * (1 + (Math.random() - 0.5) * 0.002);
+  var profile = SOUND_PROFILES[soundType];
+  var out = ac.createGain(); out.gain.value = 1;
+  var chainEnd = out;
+  if (profile.lowpass){
+    var lp = ac.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = profile.lowpass;
+    out.connect(lp); chainEnd = lp;
+  }
+  if (ac.createStereoPanner){
+    var pan = ac.createStereoPanner(); pan.pan.value = (i / 7 - 0.5) * 0.6;
+    chainEnd.connect(pan); pan.connect(bus);
+  } else chainEnd.connect(bus);
+  profile.modes.forEach(function(m){
+    var osc = ac.createOscillator(); osc.type = "sine"; osc.frequency.value = freq * m.ratio;
+    var g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(m.gain, t0 + 0.0015);
+    g.gain.setTargetAtTime(0.0001, t0 + 0.0015, m.decay / 6);
+    osc.connect(g); g.connect(out);
+    osc.start(t0); osc.stop(t0 + m.decay + 0.3);
+  });
+  var noise = ac.createBufferSource(); noise.buffer = getNoiseBuffer(ac);
+  var bp = ac.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = freq * profile.noise.freqMul; bp.Q.value = 1.0;
+  var ng = ac.createGain();
+  ng.gain.setValueAtTime(profile.noise.gain, t0);
+  ng.gain.exponentialRampToValueAtTime(0.0001, t0 + profile.noise.decay);
+  noise.connect(bp); bp.connect(ng); ng.connect(out);
+  noise.start(t0); noise.stop(t0 + profile.noise.decay + 0.02);
+}
+
+/* ============================================================
+   Application state
+   ============================================================ */
+var material = loadSoundPref();
+var savedSongs = loadSavedSongs();
+var songName = null;
+var lines = [{ lyric:"", notes:[] }];
+var cursor = { line:0, pos:0 };
+var bpm = 100, meter = [4, 4];
+var speed = 100;                 // playback-only multiplier, never persisted (matches index.html)
+var mode = "compose";            // compose | practice | play | paused
+var view = "roll";               // roll | editor | link | keys
+var idx = 0;
+var linkLine = 0, armed = null;
+
+function hasNotes(){ return lines.some(function(l){ return l.notes.some(function(n){ return !n.rest; }); }); }
+function tape(){
+  var out = [];
+  lines.forEach(function(ln, li){
+    if (li) out.push({ brk:true });
+    ln.notes.forEach(function(n, ni){ out.push({ li:li, ni:ni, n:n }); });
+  });
+  return out;
+}
+function notesOnly(){ return tape().filter(function(x){ return !x.brk && !x.n.rest; }); }
+
+/* ============================================================
+   Pad mutation - ported from index.html's newLine/backspace/
+   forwardDelete/hardDelete/addDot/moveCursor, adapted to store
+   `ticks` instead of `sec` (see noteFromWire/noteToWire above
+   for how the two stay interchangeable on disk). New notes are
+   never added here - see punch() below, the app's only entry
+   point for writing a struck bar into the pad.
+   ============================================================ */
+function onBeforeEdit(){ if (mode === "play" || mode === "paused") stopPlayback(); stopRecording(); }
+
+function newLine(){
+  onBeforeEdit();
+  var line = lines[cursor.line];
+  invalidateTagsAt(line, cursor.pos);
+  var tail = line.notes.splice(cursor.pos);
+  stripLyricTags(tail);
+  lines.splice(cursor.line + 1, 0, { lyric:"", notes: tail });
+  cursor = { line: cursor.line + 1, pos: 0 };
+}
+function backspace(){
+  onBeforeEdit();
+  var line = lines[cursor.line];
+  if (cursor.pos > 0){
+    var n = line.notes[cursor.pos - 1];
+    if (n.ticks > TICKS_PER_DOT){ n.ticks -= TICKS_PER_DOT; }
+    else { invalidateTagsAt(line, cursor.pos - 1); line.notes.splice(cursor.pos - 1, 1); cursor.pos--; }
+  } else if (cursor.line > 0){
+    var prev = lines[cursor.line - 1];
+    var mergePos = prev.notes.length;
+    stripLyricTags(line.notes);
+    prev.notes = prev.notes.concat(line.notes);
+    lines.splice(cursor.line, 1);
+    cursor = { line: cursor.line - 1, pos: mergePos };
+  }
+}
+function forwardDelete(){
+  onBeforeEdit();
+  var line = lines[cursor.line];
+  if (cursor.pos < line.notes.length){
+    var n = line.notes[cursor.pos];
+    if (n.ticks > TICKS_PER_DOT){ n.ticks -= TICKS_PER_DOT; }
+    else { invalidateTagsAt(line, cursor.pos); line.notes.splice(cursor.pos, 1); }
+  } else if (cursor.line < lines.length - 1){
+    mergeNextLineInto(line);
+  }
+}
+function hardDelete(){
+  onBeforeEdit();
+  var line = lines[cursor.line];
+  if (cursor.pos < line.notes.length){ invalidateTagsAt(line, cursor.pos); line.notes.splice(cursor.pos, 1); }
+  else if (cursor.line < lines.length - 1){ mergeNextLineInto(line); }
+}
+function mergeNextLineInto(line){
+  var next = lines[cursor.line + 1];
+  stripLyricTags(next.notes);
+  line.notes = line.notes.concat(next.notes);
+  lines.splice(cursor.line + 1, 1);
+}
+function addHold(){
+  if (cursor.pos === 0) return;
+  onBeforeEdit();
+  lines[cursor.line].notes[cursor.pos - 1].ticks += TICKS_PER_DOT;
+}
+function moveCursor(dir){
+  var len = lines[cursor.line].notes.length;
+  if (dir === "left"){
+    if (cursor.pos > 0) cursor.pos--;
+    else if (cursor.line > 0){ cursor.line--; cursor.pos = lines[cursor.line].notes.length; }
+  } else if (dir === "right"){
+    if (cursor.pos < len) cursor.pos++;
+    else if (cursor.line < lines.length - 1){ cursor.line++; cursor.pos = 0; }
+  }
+}
+function placeCursor(li, pos){ if (mode === "compose") cursor = { line: li, pos: pos }; }
+
+/* ============================================================
+   Rolling live capture - the strip winds at the song's own
+   tempo the moment the first bar is struck, and every strike
+   after that is punched at the tick the paper has reached. A
+   punch is a fixed-width mark (see .peg's CSS): the empty paper
+   after it, not its own width, is the gap - a struck xylophone
+   bar has no note-off, so a punch has no length, only position.
+   ============================================================ */
+var recording = false, recT0 = 0, recRaf = null, recLastStart = 0;
+function inputGrid(){ return meter[1] === 8 ? 8 : TICKS_PER_DOT; }  // eighth-triplet in compound time, sixteenth otherwise
+function nowTick(){ return (performance.now() - recT0) / 1000 / secPerTick(bpm); }
+
+function startRecording(){
+  recording = true; recT0 = performance.now(); recLastStart = 0;
+  var track = document.getElementById("track"); track.classList.remove("snap");
+  recRaf = requestAnimationFrame(recLoop);
+}
+function stopRecording(){
+  if (!recording) return;
+  recording = false;
+  if (recRaf) cancelAnimationFrame(recRaf);
+  recRaf = null;
+  var ln = lines[lines.length - 1];
+  if (ln.notes.length){
+    var g = inputGrid();
+    var held = Math.round((nowTick() - recLastStart) / g) * g;
+    ln.notes[ln.notes.length - 1].ticks = Math.max(g, Math.min(held, PPQ * 4));
+  }
+  render();
+}
+function recLoop(){
+  if (!recording) return;
+  windTo(nowTick());
+  if (nowTick() - recLastStart > (4 / secPerTick(bpm))){ stopRecording(); return; }   // 4s silence ends the take
+  recRaf = requestAnimationFrame(recLoop);
+}
+function punch(i){
+  var g = inputGrid();
+  if (!recording){
+    startRecording();
+    lines[lines.length - 1].notes.push({ i:i, rest:false, ticks:g, lyricStart:null, lyricEnd:null, lyricSpan:null });
+    recLastStart = 0;
+  } else {
+    var at = Math.round(nowTick() / g) * g;
+    var ln = lines[lines.length - 1];
+    if (ln.notes.length) ln.notes[ln.notes.length - 1].ticks = Math.max(g, at - recLastStart);
+    ln.notes.push({ i:i, rest:false, ticks:g, lyricStart:null, lyricEnd:null, lyricSpan:null });
+    recLastStart = at;
+  }
+  idx = notesOnly().length;
+  renderRoll();
+  syncTransportEnabled();
+}
+
+/* ============================================================
+   Practice engine - ported from index.html's startPractice/
+   practiceStrike/showPracticeTarget.
+   ============================================================ */
+var practiceEvents = [], practiceIdx = 0, practiceMistakes = 0, practiceSpeed = 1;
+function startPractice(){
+  practiceEvents = notesOnly();
+  practiceIdx = 0; practiceMistakes = 0; practiceSpeed = 1;
+  mode = practiceEvents.length ? "practice" : "compose";
+  idx = 0;
+}
+function practiceStrike(i){
+  if (!practiceEvents.length) return;
+  var target = practiceEvents[practiceIdx];
+  if (i !== target.n.i){ practiceMistakes++; flashWrong(); return; }
+  practiceIdx++;
+  if (practiceIdx >= practiceEvents.length){
+    if (practiceMistakes === 0) practiceSpeed = Math.min(2, Math.round((practiceSpeed + 0.15) * 100) / 100);
+    practiceIdx = 0; practiceMistakes = 0;
+  }
+  idx = practiceIdx;
+  renderRoll();
+}
+function flashWrong(){
+  var t = notesOnly();
+  document.querySelectorAll("#board .key").forEach(function(k, i){
+    if (t[practiceIdx] && t[practiceIdx].n.i === i) return; // never shake the actual target
+  });
+}
+
+/* ============================================================
+   Playback - winds continuously off a clock (matching the
+   capture clock's shape) rather than stepping note to note, so
+   the strip never lurches and a punch sounds exactly as its
+   centre crosses the reading head.
+   ============================================================ */
+var playCentres = [], playStarts = [], playTotal = 0;
+var playTick = 0, playT0 = 0, playFrom = 0, playRaf = null, playNext = 0;
+
+function xForTick(tick){
+  if (!playCentres.length) return 0;
+  var i = playCentres.length - 1;
+  for (var k = 0; k < playStarts.length; k++){ if (playStarts[k] > tick){ i = k - 1; break; } }
+  if (i < 0) return playCentres[0] + (tick - playStarts[0]) * tickPx();
+  if (i >= playCentres.length - 1) return playCentres[i] + (tick - playStarts[i]) * tickPx();
+  var span = playStarts[i+1] - playStarts[i];
+  var f = span > 0 ? (tick - playStarts[i]) / span : 0;
+  return playCentres[i] + f * (playCentres[i+1] - playCentres[i]);
+}
+var basePxPerTick = 22 / TICKS_PER_DOT;   // one sprocket hole (22px) per sixteenth
+function tickPx(){ return basePxPerTick; }
+function windTo(tick){
+  var track = document.getElementById("track"), band = document.querySelector(".band");
+  var tx = track.parentElement.clientWidth / 2 - xForTick(tick);
+  track.style.transform = "translateX(" + tx + "px)";
+  band.style.setProperty("--roll-x", tx.toFixed(1) + "px");
+}
+function litIndex(i){
+  document.querySelectorAll("#track .cell").forEach(function(c, k){
+    var lit = k === i;
+    var peg = c.querySelector(".peg"), w = c.querySelector(".word"), num = c.querySelector(".num");
+    if (peg) peg.classList.toggle("lit", lit);
+    if (w) w.classList.toggle("lit", lit);
+    if (num) num.classList.toggle("lit", lit);
+  });
+}
+function stopPlayback(){
+  if (playRaf){ cancelAnimationFrame(playRaf); playRaf = null; }
+}
+function startPlayback(){
+  var t = notesOnly();
+  if (!t.length){ mode = "compose"; render(); return; }
+  mode = "play";
+  playFrom = playTick; playT0 = performance.now(); playNext = 0;
+  while (playNext < playStarts.length && playStarts[playNext] < playFrom) playNext++;
+  document.getElementById("track").classList.remove("snap");
+  render();
+  playRaf = requestAnimationFrame(playLoop);
+}
+function playLoop(){
+  if (mode !== "play") return;
+  var t = notesOnly();
+  var elapsed = (performance.now() - playT0) / 1000 / secPerTick(bpm) * (speed / 100);
+  playTick = playFrom + elapsed;
+  while (playNext < playStarts.length && playTick >= playStarts[playNext]){
+    playNote(t[playNext].n.i, material);
+    idx = playNext; litIndex(idx);
+    playNext++;
+  }
+  windTo(playTick);
+  if (playTick >= playTotal){
+    stopPlayback(); playTick = 0; idx = 0;
+    mode = songName ? "practice" : "compose";
+    if (mode === "practice") startPractice();
+    render();
+    return;
+  }
+  playRaf = requestAnimationFrame(playLoop);
+}
+function resetTransport(){
+  stopPlayback(); stopRecording();
+  playTick = 0; playNext = 0; idx = 0;
+  mode = songName ? "practice" : "compose";
+  if (mode === "practice") startPractice();
+}
+
+/* ============================================================
+   Icons - crayon-stroke SVGs
+   ============================================================ */
+function svg(inner, filled){
+  return '<svg viewBox="0 0 24 24" filter="url(#roughFine)" fill="' + (filled ? "currentColor" : "none") + '"' +
+    (filled ? '' : ' stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"') +
+    ' aria-hidden="true">' + inner + '</svg>';
+}
+var ICON = {
+  settings: (function(){
+    var sp = "";
+    for (var k = 0; k < 6; k++){
+      var a = k * Math.PI / 3;
+      sp += '<line x1="' + (12+Math.cos(a)*7.1).toFixed(1) + '" y1="' + (12+Math.sin(a)*7.1).toFixed(1) +
+            '" x2="' + (12+Math.cos(a)*10.3).toFixed(1) + '" y2="' + (12+Math.sin(a)*10.3).toFixed(1) + '"/>';
+    }
+    return svg('<circle cx="12" cy="12" r="7.1"/><circle cx="12" cy="12" r="2.7"/>' + sp);
+  })(),
+  music: svg('<circle cx="7" cy="17.3" r="3.1"/><circle cx="17.4" cy="15" r="3.1"/><path d="M10.1 17.3V5.2l10.4-2.4v12.2"/><path d="M10.1 8.7 20.5 6.3"/>'),
+  roll: svg('<rect x="2.4" y="4.6" width="19.2" height="14.8" rx="2.2"/><circle cx="5.8" cy="7.6" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="7.6" r="1" fill="currentColor" stroke="none"/><circle cx="18.2" cy="7.6" r="1" fill="currentColor" stroke="none"/><circle cx="5.8" cy="16.4" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="16.4" r="1" fill="currentColor" stroke="none"/><circle cx="18.2" cy="16.4" r="1" fill="currentColor" stroke="none"/><rect x="5.4" y="10.6" width="4.6" height="2.8" rx="1.1" fill="currentColor" stroke="none"/><rect x="13.4" y="10.6" width="5.2" height="2.8" rx="1.1" fill="currentColor" stroke="none"/>'),
+  editor: svg('<path d="M3.4 6.4h11M3.4 11.2h11M3.4 16h6.4"/><path d="m18.4 5.6 3 3-7.8 7.8-4 1 1-4z"/>'),
+  link: svg('<path d="M9.3 14.7 14.7 9.3"/><path d="M12.4 6 14.3 4.2a3.7 3.7 0 0 1 5.3 5.3l-1.8 1.9"/><path d="M11.6 18 9.7 19.8a3.7 3.7 0 0 1-5.3-5.3l1.8-1.9"/>'),
+  keys: svg('<rect x="2.6" y="4.4" width="3.4" height="15.2" rx="1.5"/><rect x="7.4" y="4.4" width="3.4" height="15.2" rx="1.5"/><rect x="12.2" y="4.4" width="3.4" height="15.2" rx="1.5"/><rect x="17" y="4.4" width="3.4" height="15.2" rx="1.5"/>', true),
+  reset: svg('<path d="M2.8 4.6v6h6"/><path d="M5.2 15.4a8.7 8.7 0 1 0 2.1-9.2L2.8 10.6"/>'),
+  play: svg('<path d="M8 4.6 19.4 12 8 19.4z"/>'),
+  pause: svg('<path d="M8.4 4.4v15.2M15.6 4.4v15.2"/>'),
+  xylo: svg('<path d="M3.2 5.6v13.6M6.8 5v14.2M10.4 5.6v13.6M14 5v14.2"/><path d="M17.4 18.6 20 9.8"/><circle cx="20.6" cy="7.2" r="2.4"/>')
+};
+var VIEWS = ["roll", "editor", "link", "keys"];
+
+/* ============================================================
+   Keys
+   ============================================================ */
+var boardEl = document.getElementById("board"), board2El = document.getElementById("board2");
+function buildBoard(el){
+  el.innerHTML = "";
+  bars().forEach(function(b, i){
+    var d = document.createElement("div");
+    d.className = "key";
+    d.setAttribute("role", "button"); d.setAttribute("tabindex", "0");
+    d.setAttribute("aria-label", "Bar " + (i+1) + ", note " + b.n);
+    var skin = document.createElement("div");
+    skin.className = "skin"; skin.style.background = b.fill; skin.style.borderColor = b.edge;
+    var letter = document.createElement("span"); letter.className = "letter"; letter.textContent = b.n;
+    var numEl = document.createElement("span"); numEl.className = "idx"; numEl.textContent = String(i + 1);
+    d.appendChild(skin); d.appendChild(letter); d.appendChild(numEl);
+    d.addEventListener("pointerdown", function(ev){ strike(i, ev, d); });
+    d.addEventListener("keydown", function(ev){ if (ev.key === "Enter" || ev.key === " "){ ev.preventDefault(); strike(i, null, d); } });
+    el.appendChild(d);
+  });
+}
+function strike(i, ev, node){
+  playNote(i, material);
+  node.classList.remove("hit"); void node.offsetWidth; node.classList.add("hit");
+  setTimeout(function(){ node.classList.remove("hit"); }, 190);
+  if (ev) confetti(ev.clientX, ev.clientY, bars()[i].fill);
+
+  if (mode === "practice"){ practiceStrike(i); return; }
+  if (mode === "compose" && (view === "roll" || view === "keys")){
+    punch(i);
+  }
+}
+
+/* ============================================================
+   Confetti
+   ============================================================ */
+var cv = document.getElementById("sparks"), cx2 = cv.getContext("2d"), parts = [], raf = null;
+var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+function fitCanvas(){
+  var r = cv.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = Math.max(1, Math.round(r.width * dpr)); cv.height = Math.max(1, Math.round(r.height * dpr));
+  cx2.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+new ResizeObserver(fitCanvas).observe(cv);
+function confetti(px, py, color){
+  var r = cv.getBoundingClientRect(), x = px - r.left, y = py - r.top;
+  if (reduced){ parts.push({ x:x, y:y, life:1, decay:.1, size:26, color:color, flash:true }); }
+  else {
+    for (var i = 0; i < 17; i++){
+      var a = -Math.PI/2 + (Math.random()-.5)*2.4, sp = 1.7 + Math.random()*4.6;
+      parts.push({ x:x, y:y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp-1.3, life:1, decay:.014+Math.random()*.017,
+        size:2.4+Math.random()*4, rot:Math.random()*6.3, spin:(Math.random()-.5)*.32,
+        color: i % 4 === 0 ? "#F3E7CB" : color, kind: i % 3 === 0 ? "star" : "scrap" });
+    }
+  }
+  if (!raf) raf = requestAnimationFrame(tick);
+}
+function drawStar(x, y, r, rot){
+  cx2.beginPath();
+  for (var i = 0; i < 10; i++){
+    var rr = i % 2 ? r*.42 : r, a = rot + i*Math.PI/5;
+    var px = x + Math.cos(a)*rr, py = y + Math.sin(a)*rr;
+    if (i) cx2.lineTo(px, py); else cx2.moveTo(px, py);
+  }
+  cx2.closePath(); cx2.fill();
+}
+function drawScrap(x, y, s, rot){
+  cx2.save(); cx2.translate(x, y); cx2.rotate(rot);
+  cx2.beginPath();
+  cx2.moveTo(-s,-s*.72); cx2.lineTo(s*.86,-s); cx2.lineTo(s,s*.78); cx2.lineTo(-s*.8,s);
+  cx2.closePath(); cx2.fill(); cx2.restore();
+}
+function tick(){
+  cx2.clearRect(0, 0, cv.width, cv.height);
+  for (var i = parts.length - 1; i >= 0; i--){
+    var p = parts[i]; p.life -= p.decay;
+    if (p.life <= 0){ parts.splice(i, 1); continue; }
+    if (!p.flash){ p.x += p.vx; p.y += p.vy; p.vy += .2; p.vx *= .985; p.rot += p.spin; }
+    cx2.globalAlpha = Math.max(0, Math.min(1, p.life)); cx2.fillStyle = p.color;
+    if (p.flash){ cx2.beginPath(); cx2.arc(p.x, p.y, p.size*(1.6-p.life), 0, 6.284); cx2.fill(); }
+    else if (p.kind === "star") drawStar(p.x, p.y, p.size*1.8, p.rot);
+    else drawScrap(p.x, p.y, p.size, p.rot);
+  }
+  cx2.globalAlpha = 1;
+  raf = parts.length ? requestAnimationFrame(tick) : null;
+}
+
+/* ============================================================
+   Roll rendering
+   ============================================================ */
+var track = document.getElementById("track"), rollEmpty = document.getElementById("roll-empty");
+function cell(item, active, sm, armedFlag, rowH){
+  var b = bars()[item.n.i];
+  var c = document.createElement("div");
+  c.className = "cell" + (sm ? " sm" : "");
+  // Width is duration: the paper after a punch is how long it rings, so a cell's
+  // width must track its note's ticks, not a fixed size - otherwise the pixel
+  // layout no longer matches the tick clock driving the scroll (windTo/xForTick),
+  // and the roll's speed lurches between short and long notes instead of gliding.
+  c.style.width = Math.max((sm ? 18 : 20) + 6, basePxPerTick * item.n.ticks) + "px";
+  var num = document.createElement("div"); num.className = "num" + (active ? " lit" : ""); num.textContent = String(item.n.i + 1);
+  var peg = document.createElement("div");
+  peg.className = "peg" + (active ? " lit" : "") + (armedFlag ? " armed" : "");
+  peg.style.background = b.fill; peg.style.borderColor = b.edge;
+  // Height is pitch: bar 0 (lowest) sits at the bottom of the row, bar 7 (highest)
+  // at the top, so the tune has a visible shape instead of a flat line of dots.
+  var numH = sm ? 9 : 11, pegH = sm ? 14 : 15, wordH = sm ? 17 : 19;
+  var range = Math.max(0, (rowH || 96) - numH - pegH - wordH);
+  peg.style.marginTop = (range * (7 - item.n.i) / 7).toFixed(1) + "px";
+  var w = document.createElement("div"); w.className = "word" + (active ? " lit" : ""); w.textContent = item.n.lyricWord || "";
+  c.appendChild(num); c.appendChild(peg); c.appendChild(w);
+  c.dataset.li = item.li; c.dataset.ni = item.ni;
+  return c;
+}
+// Group a line's notes into bars by the tick each one starts on.
+function groupBars(notes){
+  var per = barTicks(meter), out = [], cum = 0;
+  notes.forEach(function(n, ni){
+    var bi = Math.floor(cum / per);
+    (out[bi] = out[bi] || []).push({ li:0, ni:ni, n:n });
+    cum += n.ticks;
+  });
+  return out.filter(function(x){ return x; });
+}
+function lyricWordFor(line, ni){
+  var tags = collectLineTags(line);
+  var tag = tags.find(function(t){ return ni === t.noteIdx; });
+  if (!tag) return "";
+  return line.lyric.slice(tag.start, tag.end);
+}
+function renderRoll(){
+  var t = tape(), n = 0, laid = [];
+  var rowH = track.clientHeight;
+  track.innerHTML = "";
+  t.forEach(function(item){
+    if (item.brk){ var s = document.createElement("div"); s.className = "seam"; track.appendChild(s); laid.push({ brk:true }); return; }
+    item.n.lyricWord = lyricWordFor(lines[item.li], item.ni);
+    var isNoteTurn = !item.n.rest;
+    var noteIdx = isNoteTurn ? n : -1;
+    var active = isNoteTurn && noteIdx === idx && mode !== "compose";
+    var el = cell(item, active, false, false, rowH);
+    track.appendChild(el);
+    laid.push({ el:el, d:item.n.ticks });
+    if (isNoteTurn) n++;
+  });
+  rollEmpty.style.display = t.length ? "none" : "grid";
+
+  // bar lines every `barTicks(meter)`, placed by measurement (a held note straddling a
+  // barline still gets a line drawn through it)
+  var cum = 0, per = barTicks(meter);
+  laid.forEach(function(c){
+    if (c.brk){ cum = 0; return; }
+    var start = cum, end = cum + c.d;
+    var first = Math.ceil(start / per) * per;
+    for (var b = first; b < end; b += per){
+      if (b === 0) continue;
+      var x = c.el.offsetLeft + ((b - start) / c.d) * c.el.offsetWidth;
+      var line = document.createElement("div"); line.className = "bar4"; line.style.left = x.toFixed(1) + "px";
+      track.appendChild(line);
+    }
+    cum = end;
+  });
+
+  // cache measured geometry for playback's continuous wind
+  playCentres = []; playStarts = [];
+  var acc = 0;
+  laid.forEach(function(c){
+    if (c.brk) return;
+    var peg = c.el.querySelector(".peg");
+    playCentres.push(c.el.offsetLeft + (peg ? peg.offsetLeft + peg.offsetWidth / 2 : 0));
+    playStarts.push(acc);
+    acc += c.d;
+  });
+  playTotal = acc;
+
+  if (recording) return;
+  if (mode === "play" || mode === "paused"){ windTo(playTick); syncTargets(); return; }
+  track.classList.add("snap");
+  var wrapW = track.parentElement.clientWidth, off;
+  if (playCentres[idx] != null) off = playCentres[idx];
+  else if (track.lastElementChild) off = track.lastElementChild.offsetLeft + track.lastElementChild.offsetWidth + 20;
+  else off = track.clientWidth / 2;
+  var tx = wrapW / 2 - off;
+  track.style.transform = "translateX(" + tx + "px)";
+  document.querySelector(".band").style.setProperty("--roll-x", tx.toFixed(1) + "px");
+  syncTargets();
+}
+function syncTargets(){
+  var t2 = notesOnly();
+  document.querySelectorAll("#board .key").forEach(function(k, i){
+    k.classList.toggle("target", mode === "practice" && !!t2[idx] && t2[idx].n.i === i);
+  });
+}
+
+/* ============================================================
+   Sheet (editor) rendering
+   ============================================================ */
+var editorEl = document.getElementById("editor");
+function renderEditor(){
+  editorEl.innerHTML = "";
+  if (!hasNotes()){ editorEl.innerHTML = '<p class="sempty">Nothing written yet. Go back to the roll and tap the bars.</p>'; return; }
+  lines.forEach(function(ln, li){
+    var wrap = document.createElement("div"); wrap.className = "sline";
+    var barsWrap = document.createElement("div"); barsWrap.className = "sbars";
+    groupBars(ln.notes).forEach(function(barItems){
+      var bd = document.createElement("div"); bd.className = "sbar";
+      barItems.forEach(function(item){
+        item.n.lyricWord = lyricWordFor(ln, item.ni);
+        var el = cell({ li:li, ni:item.ni, n:item.n }, false, true, false, 74);
+        el.style.cursor = "pointer";
+        el.addEventListener("click", function(){ placeCursor(li, item.ni + 1); render(); });
+        bd.appendChild(el);
+      });
+      barsWrap.appendChild(bd);
+    });
+    if (li === cursor.line){
+      var care = document.createElement("div"); care.className = "scaret";
+      // A .cell's real parent is its own .sbar bar group, never the outer .sbars
+      // wrapper - insertBefore must target that .sbar, or it throws (wrong-parent).
+      var flatCells = barsWrap.querySelectorAll(".cell");
+      if (cursor.pos >= flatCells.length || flatCells.length === 0){
+        var lastBar = barsWrap.lastElementChild;
+        if (lastBar) lastBar.appendChild(care); else barsWrap.appendChild(care);
+      } else {
+        var refCell = flatCells[cursor.pos];
+        refCell.parentElement.insertBefore(care, refCell);
+      }
+    }
+    wrap.appendChild(barsWrap);
+    var ly = document.createElement("div");
+    ly.className = "slyric"; ly.contentEditable = "true"; ly.spellcheck = false;
+    ly.textContent = ln.lyric || "";
+    ly.setAttribute("aria-label", "Lyric for line " + (li + 1));
+    ly.addEventListener("input", function(){ onBeforeEdit(); ln.lyric = ly.textContent; stripLyricTags(ln.notes); renderRoll(); });
+    wrap.appendChild(ly);
+    editorEl.appendChild(wrap);
+  });
+}
+
+/* ============================================================
+   Link rendering
+   ============================================================ */
+function renderLink(){
+  if (linkLine >= lines.length) linkLine = 0;
+  var ln = lines[linkLine];
+  document.getElementById("ln-label").textContent = "Line " + (linkLine + 1) + " of " + lines.length;
+  document.getElementById("ln-prev").disabled = linkLine === 0;
+  document.getElementById("ln-next").disabled = linkLine >= lines.length - 1;
+  var row = document.getElementById("linkrow"); row.innerHTML = "";
+  var bd = document.createElement("div"); bd.className = "sbar";
+  ln.notes.forEach(function(n, ni){
+    n.lyricWord = lyricWordFor(ln, ni);
+    var c = cell({ li:linkLine, ni:ni, n:n }, false, true, armed === ni, 74);
+    c.style.cursor = "pointer";
+    c.addEventListener("click", function(){ armed = (armed === ni) ? null : ni; playNote(n.i, material); renderLink(); });
+    bd.appendChild(c);
+  });
+  row.appendChild(bd);
+
+  var host = document.getElementById("words"); host.innerHTML = "";
+  var tags = collectLineTags(ln);
+  var toks = (ln.lyric || "").match(/\S+/g) || [];
+  var wordSpans = [];
+  var re = /\S+/g, m;
+  while ((m = re.exec(ln.lyric || ""))) wordSpans.push({ start:m.index, end:m.index + m[0].length, text:m[0] });
+  if (!wordSpans.length){ host.innerHTML = '<span class="wd-tok">No words on this line yet.</span>'; }
+  else {
+    wordSpans.forEach(function(w){
+      var tagged = tags.some(function(t){ return t.start === w.start && t.end === w.end; });
+      var s = document.createElement("span");
+      s.className = "wd-tok" + (tagged ? " tied" : "");
+      s.textContent = w.text;
+      s.setAttribute("role", "button"); s.setAttribute("tabindex", "0");
+      s.addEventListener("click", function(){
+        onBeforeEdit();
+        if (armed !== null){
+          linkLyricSelection(ln, armed, armed, w.start, w.end);
+          armed = null;
+          document.getElementById("linkhint").textContent = "Linked. Tap another note to keep going.";
+        } else {
+          var tag = tags.find(function(t){ return t.start === w.start && t.end === w.end; });
+          if (tag) stripLyricTags([ln.notes[tag.noteIdx]]);
+        }
+        renderLink(); renderRoll();
+      });
+      host.appendChild(s);
+    });
+  }
+  document.getElementById("linkhint").textContent = armed !== null ? "Now tap the word it sings." : "Tap a note, then tap the word it sings.";
+}
+
+/* ============================================================
+   Settings / music popovers
+   ============================================================ */
+var menuEl = document.getElementById("menu"), sheetEl = document.getElementById("sheet");
+function closePanels(){ menuEl.hidden = true; sheetEl.hidden = true; syncChips(); }
+function syncChips(){
+  document.getElementById("btn-music").classList.toggle("is-on", !menuEl.hidden);
+  document.getElementById("btn-settings").classList.toggle("is-on", !sheetEl.hidden);
+}
+function renderMenu(){
+  menuEl.innerHTML = "";
+  Object.keys(savedSongs).sort().forEach(function(name){
+    var b = document.createElement("button");
+    b.textContent = name;
+    if (name === songName) b.classList.add("current");
+    b.addEventListener("click", function(){ loadSong(name); closePanels(); });
+    menuEl.appendChild(b);
+  });
+  if (Object.keys(savedSongs).length) { var sep = document.createElement("div"); sep.className = "sep"; menuEl.appendChild(sep); }
+  var nb = document.createElement("button");
+  nb.textContent = "New song";
+  nb.addEventListener("click", function(){ newSong(); closePanels(); });
+  menuEl.appendChild(nb);
+  var hint = document.createElement("p"); hint.className = "hint";
+  hint.textContent = Object.keys(savedSongs).length ? "Selecting a song starts practice." : "Nothing saved yet - write a tune and save it.";
+  menuEl.appendChild(hint);
+}
+function loadSong(name){
+  var song = songFromWire(savedSongs[name]);
+  resetTransport();
+  lines = song.lines.length ? song.lines : [{ lyric:"", notes:[] }];
+  bpm = song.bpm; meter = song.meter;
+  songName = name; cursor = { line: lines.length - 1, pos: lines[lines.length - 1].notes.length };
+  linkLine = 0; armed = null;
+  startPractice();
+  syncTempo(); render();
+}
+function newSong(){
+  resetTransport();
+  lines = [{ lyric:"", notes:[] }]; songName = null; bpm = 100; meter = [4, 4];
+  cursor = { line:0, pos:0 }; linkLine = 0; armed = null; mode = "compose";
+  syncTempo(); render();
+}
+
+function syncTempo(){
+  document.getElementById("bpm-val").textContent = bpm;
+  document.getElementById("dot-val").textContent = secPerTick(bpm) * TICKS_PER_DOT;
+  document.getElementById("dot-val").textContent = (secPerTick(bpm) * TICKS_PER_DOT).toFixed(3) + " s";
+  document.getElementById("meter-val").textContent = meter[0] + "/" + meter[1];
+}
+var METERS = [[4,4],[3,4],[6,8]];
+function setBpm(v){ bpm = clamp(Math.round(v), 40, 240); syncTempo(); if (view === "roll") renderRoll(); }
+
+/* ============================================================
+   Save / delete - ported from index.html's saveSong/deleteSong,
+   using window.prompt/confirm in place of the custom dialog
+   (out of scope for this redesign to rebuild).
+   ============================================================ */
+function saveSong(){
+  if (!hasNotes()){ alert("Play or write some notes before saving a song."); return; }
+  var name = prompt("Song name:", songName || "");
+  if (name === null) return;
+  var trimmed = name.trim();
+  if (!trimmed) return;
+  if (savedSongs[trimmed] && trimmed !== songName){
+    if (!confirm('"' + trimmed + '" already exists. Overwrite it?')) return;
+  }
+  var song = { lines: lines, bpm: bpm, meter: meter };
+  savedSongs = Object.assign({}, savedSongs, {});
+  savedSongs[trimmed] = songToWire(song);
+  saveSavedSongs(savedSongs);
+  var tomb = loadTombstones();
+  if (tomb[trimmed]){ delete tomb[trimmed]; saveTombstones(tomb); }
+  songName = trimmed;
+  render();
+}
+function deleteSong(){
+  if (!songName) return;
+  if (!confirm('Delete "' + songName + '"?')) return;
+  delete savedSongs[songName];
+  saveSavedSongs(savedSongs);
+  var tomb = loadTombstones(); tomb[songName] = Date.now(); saveTombstones(tomb);
+  songName = null;
+  resetTransport();
+  lines = [{ lyric:"", notes:[] }]; cursor = { line:0, pos:0 }; mode = "compose";
+  render();
+}
+
+/* ============================================================
+   Main render + wiring
+   ============================================================ */
+function syncTransportEnabled(){
+  document.getElementById("btn-play").disabled = !hasNotes();
+  document.getElementById("btn-reset").disabled = !hasNotes();
+  document.getElementById("act-delete").disabled = !songName;
+}
+function render(){
+  var onBoard = (view === "roll" || view === "keys");
+  document.getElementById("view-roll").style.display = onBoard ? "flex" : "none";
+  document.getElementById("view-editor").style.display = view === "editor" ? "flex" : "none";
+  document.getElementById("view-link").style.display = view === "link" ? "flex" : "none";
+  document.querySelector(".rollwrap").style.display = view === "keys" ? "none" : "flex";
+
+  var title = document.getElementById("tb-title");
+  title.textContent = songName || "Untitled";
+  title.classList.toggle("untitled", !songName);
+
+  var playing = mode === "play";
+  var pb = document.getElementById("btn-play");
+  pb.innerHTML = playing ? ICON.pause : ICON.play;
+  pb.title = playing ? "Pause" : "Play";
+  syncTransportEnabled();
+
+  var lb = document.getElementById("btn-lyrics");
+  lb.innerHTML = ICON[view] + (view === "roll" ? "" : '<span class="dot"></span>');
+  lb.title = "View: " + (view === "editor" ? "sheet" : view);
+
+  if (view === "roll" || view === "keys") renderRoll();
+  if (view === "keys") syncTargets();
+  if (view === "editor") renderEditor();
+  if (view === "link") renderLink();
+}
+
+document.getElementById("btn-settings").innerHTML = ICON.settings;
+document.getElementById("btn-music").innerHTML = ICON.music;
+document.getElementById("btn-reset").innerHTML = ICON.reset;
+document.getElementById("btn-material").innerHTML = ICON.xylo;
+
+document.getElementById("btn-music").addEventListener("click", function(e){
+  e.stopPropagation();
+  var open = menuEl.hidden; closePanels();
+  if (open){ renderMenu(); menuEl.hidden = false; }
+  syncChips();
+});
+document.getElementById("btn-settings").addEventListener("click", function(e){
+  e.stopPropagation();
+  var open = sheetEl.hidden; closePanels(); sheetEl.hidden = !open; syncChips();
+});
+document.getElementById("screen").addEventListener("click", function(e){
+  if (!menuEl.contains(e.target) && !sheetEl.contains(e.target) &&
+      e.target.id !== "btn-music" && e.target.id !== "btn-settings") closePanels();
+});
+document.getElementById("btn-lyrics").addEventListener("click", function(){
+  view = VIEWS[(VIEWS.indexOf(view) + 1) % VIEWS.length];
+  if (view !== "roll" && view !== "keys") stopRecording();
+  armed = null; closePanels(); render();
+});
+document.getElementById("btn-play").addEventListener("click", function(){
+  stopRecording();
+  if (!hasNotes()) return;
+  closePanels();
+  if (mode === "play"){ stopPlayback(); mode = "paused"; render(); return; }
+  startPlayback();
+});
+document.getElementById("btn-reset").addEventListener("click", function(){
+  resetTransport(); closePanels(); render();
+});
+document.getElementById("btn-material").addEventListener("click", function(){
+  material = material === "metal" ? "wood" : "metal";
+  saveSoundPref(material);
+  buildBoard(boardEl); buildBoard(board2El); closePanels(); render();
+});
+document.getElementById("act-save").addEventListener("click", function(){ closePanels(); saveSong(); render(); });
+document.getElementById("act-delete").addEventListener("click", function(){ closePanels(); deleteSong(); });
+document.getElementById("spd").addEventListener("input", function(){
+  speed = +this.value;
+  document.getElementById("spd-val").textContent = speed + "%";
+  if (mode === "play"){ playFrom = playTick; playT0 = performance.now(); }
+});
+document.getElementById("bpm-down").addEventListener("click", function(e){ e.stopPropagation(); setBpm(bpm - 5); });
+document.getElementById("bpm-up").addEventListener("click", function(e){ e.stopPropagation(); setBpm(bpm + 5); });
+document.getElementById("meter-cycle").addEventListener("click", function(e){
+  e.stopPropagation();
+  var i = METERS.findIndex(function(m){ return m[0] === meter[0] && m[1] === meter[1]; });
+  meter = METERS[(i + 1) % METERS.length].slice();
+  syncTempo(); if (view === "roll") renderRoll();
+});
+var taps = [];
+document.getElementById("bpm-tap").addEventListener("click", function(e){
+  e.stopPropagation();
+  var now = performance.now();
+  if (taps.length && now - taps[taps.length - 1] > 2500) taps = [];
+  taps.push(now);
+  if (taps.length > 9) taps.shift();
+  if (taps.length < 3){ document.getElementById("bpm-val").textContent = "tap…"; return; }
+  var gaps = [];
+  for (var i = 1; i < taps.length; i++) gaps.push(taps[i] - taps[i-1]);
+  gaps.sort(function(a, b){ return a - b; });
+  var mid = gaps.length >> 1;
+  var median = gaps.length % 2 ? gaps[mid] : (gaps[mid-1] + gaps[mid]) / 2;
+  setBpm(60000 / median);
+});
+document.getElementById("cur-left").addEventListener("click", function(){ moveCursor("left"); render(); });
+document.getElementById("cur-right").addEventListener("click", function(){ moveCursor("right"); render(); });
+document.getElementById("cur-back").addEventListener("click", function(){ backspace(); render(); });
+document.getElementById("cur-fwd").addEventListener("click", function(){ forwardDelete(); render(); });
+document.getElementById("cur-hold").addEventListener("click", function(){ addHold(); render(); });
+document.getElementById("cur-newline").addEventListener("click", function(){ newLine(); render(); });
+document.getElementById("ln-prev").addEventListener("click", function(){ linkLine = Math.max(0, linkLine - 1); armed = null; renderLink(); });
+document.getElementById("ln-next").addEventListener("click", function(){ linkLine = Math.min(lines.length - 1, linkLine + 1); armed = null; renderLink(); });
+
+/* ============================================================
+   Boot
+   ============================================================ */
+buildBoard(boardEl); buildBoard(board2El);
+fitCanvas();
+syncTempo();
+render();
+window.addEventListener("resize", function(){ if (view === "roll" || view === "keys") renderRoll(); });
+</script>
+</body>
+</html>
