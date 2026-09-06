@@ -1,12 +1,12 @@
 package com.xylotune.app.ui.theme
 
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 
-// The web app has no light theme, so neither does this port — always the dark palette,
-// regardless of system setting.
-private val XylotuneColorScheme = darkColorScheme(
+// Always the paper palette, regardless of system theme — see Color.kt's note on why this
+// stays a single committed look rather than adapting to light/dark.
+private val XylotuneColorScheme = lightColorScheme(
     primary = AccentTeal,
     secondary = AccentBlue,
     tertiary = AccentPurple,

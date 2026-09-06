@@ -50,16 +50,32 @@ class JsonRoundTripTest {
 
     @Test
     fun `song updatedAt is a bare integer, never scientific notation`() {
-        val json = """{"lines":[{"notes":[{"i":0,"sec":0.4}],"lyric":""}],"updatedAt":1737400000000}"""
+        val json = """{"lines":[{"notes":[{"i":0,"sec":0.4}],"lyric":""}],"updatedAt":1737400000000,"bpm":150,"meter":[4,4]}"""
         val song = XyloJson.decodeFromString<Song>(json)
         assertEquals(1737400000000L, song.updatedAt)
         assertEquals(json, XyloJson.encodeToString(song))
     }
 
     @Test
+    fun `a song saved before bpm and meter existed decodes with the legacy-replay defaults`() {
+        val json = """{"lines":[{"notes":[{"i":0,"sec":0.4}],"lyric":""}],"updatedAt":100}"""
+        val song = XyloJson.decodeFromString<Song>(json)
+        assertEquals(150, song.bpm) // reproduces the old fixed 0.1s-per-dot grid exactly
+        assertEquals(listOf(4, 4), song.meter)
+    }
+
+    @Test
+    fun `a note carrying ticks round-trips it alongside sec`() {
+        val json = """{"i":3,"sec":0.1,"ticks":6}"""
+        val note = XyloJson.decodeFromString<NoteEvent>(json)
+        assertEquals(NoteEvent(i = 3, sec = 0.1, ticks = 6), note)
+        assertEquals(json, XyloJson.encodeToString(note))
+    }
+
+    @Test
     fun `sync file round-trips songs and tombstones together`() {
         val json =
-            """{"songs":{"Twinkle":{"lines":[{"notes":[{"i":0,"sec":0.4}],"lyric":""}],"updatedAt":100}},""" +
+            """{"songs":{"Twinkle":{"lines":[{"notes":[{"i":0,"sec":0.4}],"lyric":""}],"updatedAt":100,"bpm":150,"meter":[4,4]}},""" +
                 """"tombstones":{"OldSong":50}}"""
         val sync = XyloJson.decodeFromString<SyncFile>(json)
         assertEquals(setOf("Twinkle"), sync.songs.keys)

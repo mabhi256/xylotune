@@ -1,12 +1,9 @@
 package com.xylotune.app.ui.xylophone
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
@@ -18,15 +15,13 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.xylotune.app.audio.SoundMaterial
 import com.xylotune.app.data.NOTES
-import com.xylotune.app.ui.theme.TextSecondary
 
-private val BAR_GAP = 10.dp
+private val BAR_GAP = 8.dp
 private val BAR_HIT_EXPANSION = 6.dp
-private val BOARD_HORIZONTAL_PADDING = 8.dp
+private val BOARD_HORIZONTAL_PADDING = 10.dp
 
 /**
  * The playable instrument surface. Owns exactly one shared raw-pointer listener for the
@@ -39,9 +34,10 @@ private val BOARD_HORIZONTAL_PADDING = 8.dp
  * [MultiTouchBarTracker] and calls [onStrike] directly, independently, for every pointer
  * that lands on a bar — including two that land in the same event batch.
  *
- * The bars row is `weight(1f)` within this composable's own Column, so it fills whatever
- * height `modifier` is given (typically `Modifier.weight(1f)` from the caller's Column) —
- * there is no fixed bar height to overflow a short landscape viewport.
+ * Every key's own index number lives inside [Bar] itself now, not a second row below the
+ * board — MainScreen budgets the board at more than half the screen's height precisely so
+ * a thumb can reach any key, and a whole extra row here would have eaten straight into
+ * that margin for no reason a number baked into the key doesn't already serve.
  */
 @Composable
 fun XylophoneBoard(
@@ -60,80 +56,57 @@ fun XylophoneBoard(
     val density = LocalDensity.current
     val expandPx = with(density) { minOf(BAR_HIT_EXPANSION.toPx(), BAR_GAP.toPx() / 2) }
 
-    Column(modifier = modifier) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .padding(horizontal = BOARD_HORIZONTAL_PADDING)
-                .pointerInput(Unit) {
-                    awaitPointerEventScope {
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Main)
-                            for (change in event.changes) {
-                                if (change.changedToDown()) {
-                                    val pos = change.position
-                                    val bar = tracker.onPress(change.id.value, pos.x, pos.y)
-                                    if (bar != null) {
-                                        strikeIds[bar] = strikeIds[bar] + 1
-                                        onStrike(bar)
-                                    }
-                                    change.consume()
-                                } else if (change.changedToUp()) {
-                                    tracker.onRelease(change.id.value)
-                                    change.consume()
+    Row(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = BOARD_HORIZONTAL_PADDING)
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Main)
+                        for (change in event.changes) {
+                            if (change.changedToDown()) {
+                                val pos = change.position
+                                val bar = tracker.onPress(change.id.value, pos.x, pos.y)
+                                if (bar != null) {
+                                    strikeIds[bar] = strikeIds[bar] + 1
+                                    onStrike(bar)
                                 }
+                                change.consume()
+                            } else if (change.changedToUp()) {
+                                tracker.onRelease(change.id.value)
+                                change.consume()
                             }
                         }
                     }
-                },
-            horizontalArrangement = Arrangement.spacedBy(BAR_GAP),
-        ) {
-            NOTES.forEachIndexed { index, note ->
-                Bar(
-                    label = note.label,
-                    color = note.colorFor(material),
-                    material = material,
-                    index = index,
-                    isTarget = index == targetIndex,
-                    strikeId = strikeIds[index],
-                    modifier = Modifier
-                        .weight(1f)
-                        .onGloballyPositioned { coordinates ->
-                            val b = coordinates.boundsInParent()
-                            tracker.setBarRect(
-                                index,
-                                MultiTouchBarTracker.Rect(
-                                    left = b.left - expandPx,
-                                    top = b.top,
-                                    right = b.right + expandPx,
-                                    bottom = b.bottom,
-                                ),
-                            )
-                        },
-                )
-            }
-        }
-
-        // A second row, not a label nested inside Bar: identical fillMaxWidth/padding/gap/
-        // weight(1f) math means each number lines up under its bar without needing to
-        // convert coordinates across a parent it doesn't share with the pointer listener.
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = BOARD_HORIZONTAL_PADDING)
-                .padding(top = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(BAR_GAP),
-        ) {
-            NOTES.indices.forEach { index ->
-                Text(
-                    text = "${index + 1}",
-                    color = TextSecondary,
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.weight(1f),
-                )
-            }
+                }
+            },
+        horizontalArrangement = Arrangement.spacedBy(BAR_GAP),
+    ) {
+        NOTES.forEachIndexed { index, note ->
+            Bar(
+                label = note.label,
+                color = note.colorFor(material),
+                edgeColor = note.edgeFor(material),
+                material = material,
+                index = index,
+                isTarget = index == targetIndex,
+                strikeId = strikeIds[index],
+                modifier = Modifier
+                    .weight(1f)
+                    .onGloballyPositioned { coordinates ->
+                        val b = coordinates.boundsInParent()
+                        tracker.setBarRect(
+                            index,
+                            MultiTouchBarTracker.Rect(
+                                left = b.left - expandPx,
+                                top = b.top,
+                                right = b.right + expandPx,
+                                bottom = b.bottom,
+                            ),
+                        )
+                    },
+            )
         }
     }
 }

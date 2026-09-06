@@ -1,26 +1,29 @@
 package com.xylotune.app.player
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.xylotune.app.data.PadState
-import com.xylotune.app.data.collectLineTags
+import com.xylotune.app.data.TapeEvent
+import com.xylotune.app.data.buildTape
+import com.xylotune.app.data.secPerTick
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.roundToLong
 
 data class PlayingPos(val li: Int, val ni: Int)
 
-private data class PlaybackEvent(val li: Int, val ni: Int, val rest: Boolean, val noteIndex: Int?, val sec: Double)
-
 /**
- * Ported from index.html's buildEvents/step/startOrResume/pausePlayback/finishPlayback
- * (lines ~1306-1347). The web schedules each step via `setTimeout(step, durMs)`; this uses
- * a cancellable coroutine loop with `delay(durMs)` instead — same "wait, then advance"
- * shape, idiomatic for Kotlin.
+ * Ported from index.html's buildEvents/step/startOrResume/pausePlayback/finishPlayback,
+ * rewritten for the paper-roll redesign: instead of stepping from note to note on a
+ * `setTimeout` chain (which re-seats the strip once per note and looks like a jump-cut),
+ * this winds a single continuous [currentTick] off a clock — the same "elapsed real time
+ * turned into elapsed ticks at the pad's own tempo" shape [LiveCapture] uses for input —
+ * so the roll can animate every frame in between, and a note sounds exactly as its tick
+ * position crosses the reading head rather than when a timer happens to fire.
  */
 class Playback(
     private val pad: PadState,
@@ -29,28 +32,39 @@ class Playback(
 ) {
     var playing: Boolean by mutableStateOf(false)
         private set
-    var playingPos: PlayingPos? by mutableStateOf(null)
+    var currentTick: Double by mutableDoubleStateOf(0.0)
         private set
-    var playingTagKey: String? by mutableStateOf(null)
+    var currentIndex: Int by mutableIntStateOf(0)
         private set
 
     // The speed slider (50-200%) — intentionally NOT persisted, matching the web, which
-    // always resets it to 100 on load.
+    // always resets it to 100 on load. Distinct from PadState.bpm, the song's own tempo.
     var speedPercent: Int by mutableIntStateOf(100)
 
-    private var events: List<PlaybackEvent> = emptyList()
-    private var idx: Int = 0
+    private var events: List<TapeEvent> = emptyList()
+    private var totalTicks: Int = 0
     private var job: Job? = null
+    private var fromTick: Double = 0.0
+    private var t0: Long = 0
+    private var nextIdx: Int = 0
 
-    val currentIndex: Int get() = idx
     val eventCount: Int get() = events.size
+
+    val playingPos: PlayingPos?
+        get() = events.getOrNull(currentIndex)?.let { PlayingPos(it.li, it.ni) }
 
     fun startOrResume() {
         if (playing) return
-        if (idx == 0) events = buildEvents()
+        if (events.isEmpty()) {
+            events = buildTape(pad.lines)
+            totalTicks = events.sumOf { it.ticks }
+        }
         if (events.isEmpty()) return
         playing = true
-        job = scope.launch { runLoop() }
+        fromTick = currentTick
+        t0 = System.nanoTime()
+        nextIdx = events.indexOfFirst { it.startTick >= fromTick }.let { if (it < 0) events.size else it }
+        job = scope.launch { loop() }
     }
 
     fun pause() {
@@ -61,34 +75,30 @@ class Playback(
     fun finish() {
         job?.cancel()
         playing = false
-        idx = 0
-        clearPlayingHighlight()
+        currentTick = 0.0
+        currentIndex = 0
+        events = emptyList() // rebuilt on next start, in case the pad changed meanwhile
     }
 
-    private suspend fun runLoop() {
-        while (idx < events.size) {
-            val ev = events[idx]
-            val speed = speedPercent / 100.0
-            val durMs = (ev.sec * 1000.0 / speed).roundToLong()
-            if (!ev.rest && ev.noteIndex != null) onPlayNote(ev.noteIndex, (durMs * 0.9).roundToLong())
-            clearPlayingHighlight()
-            playingPos = PlayingPos(ev.li, ev.ni)
-            val tag = collectLineTags(pad.lines[ev.li].notes)
-                .find { ev.ni >= it.noteIdx && ev.ni <= it.noteIdx + it.noteSpan - 1 }
-            if (tag != null) playingTagKey = "${ev.li}-${tag.noteIdx}"
-            idx++
-            delay(durMs.coerceAtLeast(0))
+    private suspend fun loop() {
+        while (playing) {
+            val elapsedSec = (System.nanoTime() - t0) / 1_000_000_000.0
+            val elapsedTicks = elapsedSec / secPerTick(pad.bpm) * (speedPercent / 100.0)
+            currentTick = fromTick + elapsedTicks
+            while (nextIdx < events.size && currentTick >= events[nextIdx].startTick) {
+                val ev = events[nextIdx]
+                if (!ev.rest && ev.noteIndex != null) {
+                    val durMs = (ev.ticks * secPerTick(pad.bpm) * 1000 / (speedPercent / 100.0)).toLong()
+                    onPlayNote(ev.noteIndex, (durMs * 0.9).toLong())
+                }
+                currentIndex = nextIdx
+                nextIdx++
+            }
+            if (currentTick >= totalTicks) {
+                finish()
+                return
+            }
+            delay(16)
         }
-        finish()
     }
-
-    private fun clearPlayingHighlight() {
-        playingPos = null
-        playingTagKey = null
-    }
-
-    private fun buildEvents(): List<PlaybackEvent> =
-        pad.lines.flatMapIndexed { li, line ->
-            line.notes.mapIndexed { ni, n -> PlaybackEvent(li, ni, n.rest, n.i, n.sec) }
-        }
 }

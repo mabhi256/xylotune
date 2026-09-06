@@ -22,11 +22,11 @@ import com.xylotune.app.ui.theme.TextPrimary
 
 /**
  * Touch replacement for the web's keyboard-only editing shortcuts (arrows/Backspace/
- * Delete/Shift+Delete/Enter — see the plan's Risk Area 3). Only shown in the Sheet tab,
- * where the full multi-line editor and its cursor live.
+ * Delete/Shift+Delete/Enter/the dot editor's tap-to-grow gesture). Only shown in the
+ * Sheet view, where the full multi-line editor and its cursor live.
  *
- * `⌦` is a dual-purpose button: a short press is forward-delete (shrink the gap, then
- * delete), a long press is hard-delete (always fully removes the note+dots) — both target
+ * `⌦` is a dual-purpose button: a short press is forward-delete (shrink the hold, then
+ * delete), a long press is hard-delete (always fully removes the note) — both target
  * "after the cursor," the same thing Delete/Shift+Delete do on the web, so pairing them on
  * one button is accurate, not just economical.
  */
@@ -37,6 +37,7 @@ fun CursorToolbar(
     onBackspace: () -> Unit,
     onForwardDelete: () -> Unit,
     onHardDelete: () -> Unit,
+    onAddHold: () -> Unit,
     onNewLine: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -50,6 +51,7 @@ fun CursorToolbar(
             onClick = onForwardDelete,
             onLongClick = onHardDelete,
         )
+        ToolbarButton("+", "Lengthen the note before the cursor", onAddHold)
         ToolbarButton("⏎", "New line", onNewLine)
     }
 }

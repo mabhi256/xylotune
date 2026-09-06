@@ -15,10 +15,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.xylotune.app.ui.theme.NowRed
 
-// Ported from index.html's .caret — a blinking text-insertion indicator.
+// Ported from index.html's .caret — a blinking text-insertion indicator. Defaults to the
+// same reading-head red the roll uses, so the sheet's caret and the roll's caret read as
+// the same idea (a fixed point where "now" is) rather than two unrelated colours.
 @Composable
-fun Caret(color: Color = Color(0xFFE8EAED)) {
+fun Caret(color: Color = NowRed) {
     val transition = rememberInfiniteTransition(label = "caretBlink")
     val alpha by transition.animateFloat(
         initialValue = 1f,

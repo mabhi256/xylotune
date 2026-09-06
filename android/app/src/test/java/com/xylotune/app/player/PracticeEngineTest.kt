@@ -1,6 +1,8 @@
 package com.xylotune.app.player
 
 import com.xylotune.app.data.PadState
+import com.xylotune.app.model.Line
+import com.xylotune.app.model.NoteEvent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -8,12 +10,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 // Ported cases from index.html's showPracticeTarget/startPractice/stopPractice/
-// practiceStrike (lines ~1349-1388).
+// practiceStrike (lines ~1349-1388). PracticeEngine only ever reads note order and
+// identity, never timing, so loading a plain fixture line stands in for live capture here.
 class PracticeEngineTest {
 
     private fun padWithNotes(vararg noteIndices: Int): PadState {
         val pad = PadState()
-        noteIndices.forEachIndexed { i, n -> pad.strike(n, nowMs = i.toLong() * 1000) }
+        pad.loadSong(
+            newLines = listOf(Line(notes = noteIndices.map { NoteEvent(i = it, sec = 0.4) })),
+            songBpm = 100,
+            songMeter = listOf(4, 4),
+        )
         return pad
     }
 
@@ -87,9 +94,7 @@ class PracticeEngineTest {
 
     @Test
     fun `rests are excluded from the practice sequence`() {
-        val pad = PadState()
-        pad.strike(0, nowMs = 0)
-        pad.strike(1, nowMs = 100)
+        val pad = padWithNotes(0, 1)
         val engine = PracticeEngine(pad)
         engine.start()
         assertEquals(2, engine.eventCount) // both real notes, no rest ever exists to filter here,

@@ -11,11 +11,19 @@ import kotlinx.serialization.Serializable
 // Field types matter for interop, not just values: `i`/lyricStart/lyricEnd/lyricSpan are
 // Int (the web writes bare integers), `sec` is Double. This class carries no `updatedAt`
 // itself — that lives one level up, on Song.
+//
+// `ticks` (24 per quarter note, MIDI-style) is the paper-roll redesign's tempo-relative
+// duration, read by every mutation and rendering path added for that redesign; `sec`
+// stays alongside it purely for wire compatibility with a reader that predates ticks (the
+// original index.html, or an older Android build). A note built in memory always carries
+// a real `ticks` value — see [com.xylotune.app.data.ticksOf] for the one place that reads
+// `sec` as a fallback, when decoding a file saved before this field existed.
 @Serializable
 data class NoteEvent(
     val i: Int? = null,
     val rest: Boolean = false,
     val sec: Double,
+    val ticks: Int? = null,
     val lyricStart: Int? = null,
     val lyricEnd: Int? = null,
     val lyricSpan: Int? = null,
