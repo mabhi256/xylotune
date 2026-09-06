@@ -1,0 +1,4 @@
+<resources>
+    <!-- Matches the app's own dark background (#212326) used everywhere else. -->
+    <color name="ic_launcher_background">#212326</color>
+</resources>
