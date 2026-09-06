@@ -90,7 +90,10 @@ html,body{
 .tb-title.untitled::after{display:none}
 
 /* --- popovers --- */
-.menu,.sheet{
+/* Selector must be at least as specific as "#screen > *" above (an ID beats a bare class),
+   or that rule's z-index:1 silently wins and the roll's own cells/canvas start eating
+   clicks meant for these buttons whenever a punched note happens to sit underneath them. */
+#screen > .menu, #screen > .sheet{
   position:absolute; z-index:20; background:var(--app-bg); border:2.5px solid var(--app-ink);
   border-radius:14px; box-shadow:4px 5px 0 rgba(51,48,43,.14); padding:8px;
   max-height:80vh; overflow-y:auto;
@@ -291,6 +294,7 @@ html,body{
     <div class="div"></div>
     <button class="item" id="act-save">Save song</button>
     <button class="item" id="act-delete" disabled>Delete song</button>
+    <button class="item" id="act-clear" disabled>Clear sheet</button>
   </div>
 
   <div id="view-roll" style="display:flex; flex-direction:column; flex:1 1 auto; min-height:0">
@@ -1154,6 +1158,11 @@ function newSong(){
   cursor = { line:0, pos:0 }; linkLine = 0; armed = null; mode = "compose";
   syncTempo(); render();
 }
+function clearSheet(){
+  if (!hasNotes()) return;
+  if (!confirm("Clear the sheet? This can't be undone.")) return;
+  newSong();
+}
 
 function syncTempo(){
   document.getElementById("bpm-val").textContent = bpm;
@@ -1206,6 +1215,7 @@ function syncTransportEnabled(){
   document.getElementById("btn-play").disabled = !hasNotes();
   document.getElementById("btn-reset").disabled = !hasNotes();
   document.getElementById("act-delete").disabled = !songName;
+  document.getElementById("act-clear").disabled = !hasNotes();
 }
 function render(){
   var onBoard = (view === "roll" || view === "keys");
@@ -1275,6 +1285,7 @@ document.getElementById("btn-material").addEventListener("click", function(){
 });
 document.getElementById("act-save").addEventListener("click", function(){ closePanels(); saveSong(); render(); });
 document.getElementById("act-delete").addEventListener("click", function(){ closePanels(); deleteSong(); });
+document.getElementById("act-clear").addEventListener("click", function(){ closePanels(); clearSheet(); });
 document.getElementById("spd").addEventListener("input", function(){
   speed = +this.value;
   document.getElementById("spd-val").textContent = speed + "%";
